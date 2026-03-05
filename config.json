@@ -1,0 +1,6 @@
+{
+  "PATH_TO_TESTS_FILES": "./output-matrices",
+  "PATH_TO_UPTEST_BAT": "./Uptest-Core.bat",
+  "SUFFIX_TEST_FILES_TEMP": "_temp",
+  "FOLDER_REF_AND_LOG_TEMP": "ref_and_log_temp"
+}

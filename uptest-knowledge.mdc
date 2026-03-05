@@ -1,0 +1,17 @@
+---
+description: Connaissance du projet Uptest-IHM - matrices, tests, exécution
+alwaysApply: true
+---
+
+# Uptest-IHM - Contexte Projet
+
+Lorsque tu travailles sur ce projet, consulte la skill **uptest-project-knowledge** pour la documentation complète.
+
+## Rappels essentiels
+
+- **Matrices Excel** : colonnes `${type}`, `${id}`, `${ecran}`, `${msgKOPrevu}`, `${get}`, `${champ01}`-`${champ15}`, `${bouton01}`-`${bouton10}`
+- **Exécution** : Tree.js runTest() → FileUtils generateExcel() → IPC generate-csv-and-run → index.js spawn(Uptest-Core.bat)
+- **Calcul résultats** : L'IHM ne calcule pas ; elle vérifie uniquement le code de sortie (0 = succès)
+- **CSV référentiel** : `Actif;Instance;OrdreModule;Module;ordreOption;Option;Libelle;Predecesseur;Param1-10`
+- **Variables** : VAR_, PWD_, MNT_, lists
+- **isDefinition** : mode définition (INIT) vs mode test ; GET masqué en mode définition
