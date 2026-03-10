@@ -27,7 +27,11 @@ function getTestCasesId(type: RowType, index: number): string {
   return `${type}-Ligne${index + 1}`;
 }
 
-export function generateWorksheetFromData(rows: SheetRow[], sheetName: string): XLSX.WorkSheet {
+export function generateWorksheetFromData(
+  rows: SheetRow[],
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- conservé pour cohérence API
+  sheetName: string
+): XLSX.WorkSheet {
   const wsData: (string | undefined)[][] = [COLUMN_KEYS];
 
   rows.forEach((row, idx) => {

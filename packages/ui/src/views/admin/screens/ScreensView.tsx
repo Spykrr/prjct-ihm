@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Box,
   Flex,
@@ -6,6 +6,8 @@ import {
   Button,
   Input,
   Checkbox,
+  Switch,
+  Dialog,
 } from '@chakra-ui/react';
 import {
   Plus,
@@ -19,24 +21,43 @@ import {
 } from 'lucide-react';
 import { parseExcel, type ParsedScreen, type ParsedWorkbook } from '@uptest/core';
 import { openExcelFile } from '../../../utils/fileImport';
+import { useSidebar } from '../../../contexts/useSidebar';
 import ModalContent from './ModalContent';
 
 type Screen = ParsedScreen;
 
 export default function ScreensView() {
-  const [workbook, setWorkbook] = useState<ParsedWorkbook | null>(null);
+  const { isDefinition, setIsDefinition } = useSidebar();
   const [importBuffer, setImportBuffer] = useState<{ buffer: ArrayBuffer; fileName: string } | null>(null);
   const [currentSheet, setCurrentSheet] = useState<string | null>(null);
-  const [screens, setScreens] = useState<Screen[]>([]);
   const [extractMode, setExtractMode] = useState<'init' | 'test'>('test');
   const [selectedTestId, setSelectedTestId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [screens, setScreens] = useState<Screen[]>([]);
+  const [prevSyncKey, setPrevSyncKey] = useState<string>('');
   const [selectedScreens, setSelectedScreens] = useState<string[]>([]);
   const [importError, setImportError] = useState<string | null>(null);
   const [popupData, setPopupData] = useState<{
     type: 'champs' | 'boutons' | 'get' | 'msgKOPrevu';
     screen: Screen;
   } | null>(null);
+  const [addScreenDialogOpen, setAddScreenDialogOpen] = useState(false);
+  const [newScreenName, setNewScreenName] = useState('');
+
+  const effectiveExtractMode = isDefinition ? 'init' : extractMode;
+  const effectiveTestId = isDefinition ? undefined : (extractMode === 'test' ? selectedTestId : undefined);
+
+  const { workbook, screens: derivedScreens } = useMemo(() => {
+    if (!importBuffer || !currentSheet) return { workbook: null as ParsedWorkbook | null, screens: [] as Screen[] };
+    const parsed = parseExcel(importBuffer.buffer, importBuffer.fileName, {
+      mode: effectiveExtractMode,
+      testId: effectiveTestId ?? undefined,
+    });
+    return {
+      workbook: parsed,
+      screens: parsed.screensBySheet[currentSheet] ?? [],
+    };
+  }, [importBuffer, currentSheet, effectiveExtractMode, effectiveTestId]);
 
   const sheetNames = workbook ? Object.keys(workbook.screensBySheet) : [];
   const currentScreens = screens;
@@ -53,30 +74,21 @@ export default function ScreensView() {
       const result = await openExcelFile();
       if (!result) return;
 
-      setImportBuffer({ buffer: result.buffer, fileName: result.fileName });
       const parsedInit = parseExcel(result.buffer, result.fileName, { mode: 'init' });
       const firstSheet = Object.keys(parsedInit.screensBySheet)[0];
 
+      setImportBuffer({ buffer: result.buffer, fileName: result.fileName });
       if (firstSheet) {
         setCurrentSheet(firstSheet);
         const ids = parsedInit.testIdsBySheet?.[firstSheet] ?? [];
         if (ids.length > 0) {
           setExtractMode('test');
           setSelectedTestId(ids[0]);
-          const parsed = parseExcel(result.buffer, result.fileName, {
-            mode: 'test',
-            testId: ids[0],
-          });
-          setWorkbook(parsed);
-          setScreens(parsed.screensBySheet[firstSheet] ?? []);
         } else {
           setExtractMode('init');
-          setWorkbook(parsedInit);
-          setScreens(parsedInit.screensBySheet[firstSheet]);
         }
       } else {
         setCurrentSheet(null);
-        setScreens([]);
         setImportError('Aucune donnée trouvée dans le fichier Excel.');
       }
     } catch (err) {
@@ -84,31 +96,42 @@ export default function ScreensView() {
     }
   };
 
-  const applyExtractFilter = () => {
-    if (!importBuffer || !currentSheet) return;
-    const parsed = parseExcel(importBuffer.buffer, importBuffer.fileName, {
-      mode: extractMode,
-      testId: extractMode === 'test' ? selectedTestId : undefined,
-    });
-    setWorkbook(parsed);
-    setScreens(parsed.screensBySheet[currentSheet] ?? []);
-  };
-
-  useEffect(() => {
-    if (importBuffer && currentSheet) applyExtractFilter();
-  }, [extractMode, selectedTestId, currentSheet]);
+  const syncKey = importBuffer ? `${importBuffer.fileName}-${currentSheet}-${effectiveExtractMode}-${effectiveTestId ?? ''}` : '';
+  if (derivedScreens.length > 0 && syncKey && syncKey !== prevSyncKey) {
+    setPrevSyncKey(syncKey);
+    setScreens(derivedScreens);
+  }
 
   const handleSelectSheet = (sheetName: string) => {
     setCurrentSheet(sheetName);
-    if (workbook) {
-      const sheetTestIds = Array.isArray(workbook.testIdsBySheet?.[sheetName])
-        ? workbook.testIdsBySheet[sheetName]
-        : [];
-      if (sheetTestIds.length > 0 && !sheetTestIds.includes(selectedTestId)) {
-        setSelectedTestId(sheetTestIds[0]);
-      } else {
-        setScreens(workbook.screensBySheet[sheetName] ?? []);
+    if (isDefinition) {
+      setExtractMode('init');
+      setSelectedTestId('');
+      return;
+    }
+    if (importBuffer) {
+      const parsed = parseExcel(importBuffer.buffer, importBuffer.fileName, { mode: 'init' });
+      const ids = parsed.testIdsBySheet?.[sheetName] ?? [];
+      if (ids.length > 0 && !ids.includes(selectedTestId)) {
+        setSelectedTestId(ids[0]);
+        setExtractMode('test');
+      } else if (ids.length === 0) {
+        setExtractMode('init');
+        setSelectedTestId('');
       }
+    }
+  };
+
+  const sheetTestIds = workbook?.testIdsBySheet?.[currentSheet ?? ''] ?? [];
+  const treeNodes = isDefinition ? ['INIT'] : [...sheetTestIds, 'INIT'];
+  const selectedNode = effectiveExtractMode === 'init' ? 'INIT' : selectedTestId || 'INIT';
+  const selectNode = (node: string) => {
+    if (node === 'INIT') {
+      setExtractMode('init');
+      setSelectedTestId('');
+    } else {
+      setExtractMode('test');
+      setSelectedTestId(node);
     }
   };
 
@@ -122,18 +145,27 @@ export default function ScreensView() {
     setSelectedScreens([]);
   };
 
-  const addScreen = () => {
+  const openAddScreenDialog = () => {
+    setNewScreenName('');
+    setAddScreenDialogOpen(true);
+  };
+
+  const confirmAddScreen = () => {
+    const title = newScreenName.trim() || `Nouvel écran ${screens.length + 1}`;
     const newScreen: Screen = {
       id: `new-${Date.now()}`,
-      number: screens.length + 1,
-      title: `Nouvel écran ${screens.length + 1}`,
+      number: 1,
+      title,
       hasFields: true,
       hasButtons: true,
       hasGet: false,
       hasMsg: false,
       rawRow: {},
     };
-    setScreens([...screens, newScreen]);
+    const nextScreens = [newScreen, ...screens].map((s, idx) => ({ ...s, number: idx + 1 }));
+    setScreens(nextScreens);
+    setAddScreenDialogOpen(false);
+    setNewScreenName('');
   };
 
   const duplicateScreen = (screen: Screen) => {
@@ -181,32 +213,55 @@ export default function ScreensView() {
   };
 
   const hasData = workbook && currentSheet;
+  const isSoapSheet = (currentSheet?.toLowerCase().includes('soap') ?? false);
+
+  useEffect(() => {
+    if (isDefinition) {
+      setExtractMode('init');
+      setSelectedTestId('');
+    }
+  }, [isDefinition]);
 
   return (
-    <Box minH="100vh" display="flex" flexDirection="column" bg="gray.50">
+    <Box minH="100vh" display="flex" flexDirection="column" bg="#F8F8F8">
       {/* Header */}
-      <Box as="header" bg="white" borderBottomWidth="1px">
+      <Box as="header" bg="white" borderBottomWidth="1px" borderColor="gray.200">
         <Flex alignItems="center" justifyContent="space-between" px={6} py={3}>
-          <Flex alignItems="center" gap={6}>
-            <img src="/UptestV2.png" alt="UptestV2" style={{ height: 56, objectFit: 'contain' }} />
-            <Flex alignItems="center" gap={6} fontSize="sm">
-              <Flex alignItems="center" gap={2}>
-                <Text color="gray.500">Total:</Text>
-                <Text fontWeight="semibold">{currentScreens.length}</Text>
-              </Flex>
-              <Flex alignItems="center" gap={2}>
-                <Text color="gray.500">Sélectionnés:</Text>
-                <Text fontWeight="semibold">{selectedScreens.length}</Text>
-              </Flex>
+          <Flex alignItems="center" gap={6} fontSize="sm">
+            <Flex alignItems="center" gap={2}>
+              <Text color="gray.500">Total:</Text>
+              <Text fontWeight="semibold">{currentScreens.length}</Text>
+            </Flex>
+            <Flex alignItems="center" gap={2}>
+              <Text color="gray.500">Sélectionnés:</Text>
+              <Text fontWeight="semibold">{selectedScreens.length}</Text>
             </Flex>
           </Flex>
 
-          <Flex alignItems="center" gap={3}>
+          <Flex alignItems="center" gap={4}>
+            <Flex alignItems="center" gap={2}>
+              <Text fontSize="sm" color="gray.600" fontWeight="medium">
+                Test
+              </Text>
+              <Switch.Root
+                size="sm"
+                checked={isDefinition}
+                onCheckedChange={(e) => setIsDefinition(e.checked)}
+              >
+                <Switch.HiddenInput />
+                <Switch.Control>
+                  <Switch.Thumb />
+                </Switch.Control>
+              </Switch.Root>
+              <Text fontSize="sm" color="gray.600" fontWeight="medium">
+                Définitions
+              </Text>
+            </Flex>
             <Button variant="outline" size="sm" gap={2} onClick={handleImport}>
               <Upload size={16} />
               Importer
             </Button>
-            <Button size="sm" gap={2} bg="gray.900" color="white" _hover={{ bg: 'gray.800' }}>
+            <Button size="sm" gap={2} bg="#422AFB" color="white" _hover={{ bg: '#3522d4' }}>
               <Download size={16} />
               Sauvegarder
             </Button>
@@ -217,8 +272,8 @@ export default function ScreensView() {
       {/* Main Content */}
       <Flex flex="1" overflow="hidden">
         {/* Left Panel - Sheets from Excel */}
-        <Box as="aside" w="256px" bg="white" borderRightWidth="1px" flexShrink={0}>
-          {workbook && (
+        <Box as="aside" w="256px" bg="white" borderRightWidth="1px" borderColor="gray.200" flexShrink={0}>
+          {workbook && !isDefinition && (
             <Box p={4} borderBottomWidth="1px">
               <Button variant="outline" size="sm" w="full" gap={2}>
                 <Plus size={16} />
@@ -230,26 +285,48 @@ export default function ScreensView() {
           <Box p={4} display="flex" flexDirection="column" gap={2}>
             {workbook ? (
               sheetNames.map((sheetName) => (
-                <Box
-                  key={sheetName}
-                  p={3}
-                  bg={currentSheet === sheetName ? 'gray.50' : 'white'}
-                  borderWidth="1px"
-                  borderColor={currentSheet === sheetName ? 'gray.900' : 'gray.200'}
-                  borderRadius="lg"
-                  cursor="pointer"
-                  _hover={{ borderColor: 'gray.300' }}
-                  onClick={() => handleSelectSheet(sheetName)}
-                >
-                  <Flex alignItems="center" gap={2}>
-                    <FolderOpen size={16} color={currentSheet === sheetName ? '#111827' : '#4b5563'} />
-                    <Text fontWeight="medium" fontSize="sm">
-                      {sheetName}
+                <Box key={sheetName}>
+                  <Box
+                    p={3}
+                    bg={currentSheet === sheetName ? '#e8f0fe' : 'white'}
+                    borderWidth="1px"
+                    borderColor={currentSheet === sheetName ? '#422AFB' : 'gray.200'}
+                    borderRadius="lg"
+                    cursor="pointer"
+                    _hover={{ borderColor: 'gray.300' }}
+                    onClick={() => handleSelectSheet(sheetName)}
+                  >
+                    <Flex alignItems="center" gap={2}>
+                      <FolderOpen size={16} color={currentSheet === sheetName ? '#422AFB' : '#4b5563'} />
+                      <Text fontWeight="medium" fontSize="sm">
+                        {sheetName}
+                      </Text>
+                    </Flex>
+                    <Text fontSize="xs" color="gray.500" mt={1}>
+                      {(workbook.screensBySheet[sheetName] ?? []).length} écran(s)
                     </Text>
-                  </Flex>
-                  <Text fontSize="xs" color="gray.500" mt={1}>
-                    {(workbook.screensBySheet[sheetName] ?? []).length} écran(s)
-                  </Text>
+                  </Box>
+                  {currentSheet === sheetName && treeNodes.length > 0 && (
+                    <Box pl={4} mt={2} display="flex" flexDirection="column" gap={1}>
+                      {treeNodes.map((node) => (
+                        <Box
+                          key={node}
+                          py={2}
+                          px={2}
+                          borderRadius="md"
+                          cursor="pointer"
+                          bg={selectedNode === node ? '#ede9fe' : 'transparent'}
+                          color={selectedNode === node ? '#422AFB' : 'gray.700'}
+                          _hover={{ bg: selectedNode === node ? '#ede9fe' : 'gray.100' }}
+                          onClick={() => selectNode(node)}
+                        >
+                          <Text fontSize="sm" fontWeight={selectedNode === node ? 'semibold' : 'normal'}>
+                            {node}
+                          </Text>
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
                 </Box>
               ))
             ) : (
@@ -284,7 +361,7 @@ export default function ScreensView() {
                 Les écrans et leurs champs/boutons sont importés depuis un fichier Excel.
                 Cliquez sur &quot;Importer&quot; pour charger une matrice de tests.
               </Text>
-              <Button onClick={handleImport} gap={2}>
+              <Button onClick={handleImport} gap={2} bg="#422AFB" color="white" _hover={{ bg: '#3522d4' }}>
                 <Upload size={16} />
                 Importer un fichier Excel
               </Button>
@@ -363,10 +440,10 @@ export default function ScreensView() {
                     _hover={{ borderColor: 'gray.400' }}
                     transition="border-color 0.2s"
                     borderColor={
-                      selectedScreens.includes(screen.id) ? 'gray.900' : undefined
+                      selectedScreens.includes(screen.id) ? '#422AFB' : undefined
                     }
                     bgColor={
-                      selectedScreens.includes(screen.id) ? 'gray.50' : undefined
+                      selectedScreens.includes(screen.id) ? '#e8f0fe' : undefined
                     }
                   >
                     <Flex alignItems="center" justifyContent="space-between">
@@ -394,8 +471,9 @@ export default function ScreensView() {
                               <Button
                                 size="xs"
                                 variant="outline"
-                                bg={screen.hasFields ? 'green.50' : undefined}
-                                borderColor={screen.hasFields ? 'green.200' : undefined}
+                                bg={screen.hasFields ? '#D4EDDA' : undefined}
+                                borderColor={screen.hasFields ? '#155724' : undefined}
+                                color={screen.hasFields ? '#155724' : undefined}
                                 onClick={() =>
                                   setPopupData({
                                     type: 'champs',
@@ -405,41 +483,48 @@ export default function ScreensView() {
                               >
                                 Champs
                               </Button>
-                              <Button
-                                size="xs"
-                                variant="outline"
-                                bg={screen.hasButtons ? 'green.50' : undefined}
-                                borderColor={screen.hasButtons ? 'green.200' : undefined}
-                                onClick={() =>
-                                  setPopupData({
-                                    type: 'boutons',
-                                    screen,
-                                  })
-                                }
-                              >
-                                Boutons
-                              </Button>
-                              {screen.title !== 'Contexte' && (
-                                <Button
-                                  size="xs"
-                                  variant="outline"
-                                  bg={screen.hasGet ? 'green.50' : undefined}
-                                  borderColor={screen.hasGet ? 'green.200' : undefined}
-                                  onClick={() =>
-                                    setPopupData({
-                                      type: 'get',
-                                      screen,
-                                    })
-                                  }
-                                >
-                                  GET
-                                </Button>
+                              {!(isDefinition && isSoapSheet) && (
+                                <>
+                                  <Button
+                                    size="xs"
+                                    variant="outline"
+                                    bg={screen.hasButtons ? '#D1ECF1' : undefined}
+                                    borderColor={screen.hasButtons ? '#0C5460' : undefined}
+                                    color={screen.hasButtons ? '#0C5460' : undefined}
+                                    onClick={() =>
+                                      setPopupData({
+                                        type: 'boutons',
+                                        screen,
+                                      })
+                                    }
+                                  >
+                                    Boutons
+                                  </Button>
+                                  {screen.title !== 'Contexte' && (
+                                    <Button
+                                      size="xs"
+                                      variant="outline"
+                                      bg={screen.hasGet ? '#D1ECF1' : undefined}
+                                      borderColor={screen.hasGet ? '#0C5460' : undefined}
+                                      color={screen.hasGet ? '#0C5460' : undefined}
+                                      onClick={() =>
+                                        setPopupData({
+                                          type: 'get',
+                                          screen,
+                                        })
+                                      }
+                                    >
+                                      GET
+                                    </Button>
+                                  )}
+                                </>
                               )}
                               <Button
                                 size="xs"
                                 variant="outline"
-                                bg={screen.hasMsg ? 'green.50' : undefined}
-                                borderColor={screen.hasMsg ? 'green.200' : undefined}
+                                bg={screen.hasMsg ? '#FFF3CD' : undefined}
+                                borderColor={screen.hasMsg ? '#856404' : undefined}
+                                color={screen.hasMsg ? '#856404' : undefined}
                                 onClick={() =>
                                   setPopupData({
                                     type: 'msgKOPrevu',
@@ -472,11 +557,11 @@ export default function ScreensView() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => duplicateScreen(screen)}
+                            onClick={openAddScreenDialog}
                             gap={1}
                           >
                             <Plus size={14} />
-                            <Text fontSize="xs">Ajouter une instance</Text>
+                            <Text fontSize="xs">Créer un nouvel écran</Text>
                           </Button>
                           <Button
                             variant="ghost"
@@ -502,7 +587,7 @@ export default function ScreensView() {
               {/* Add Screen Button */}
               <Box
                 as="button"
-                onClick={addScreen}
+                onClick={openAddScreenDialog}
                 w="full"
                 p={4}
                 borderWidth="2px"
@@ -522,6 +607,57 @@ export default function ScreensView() {
         </Box>
       </Flex>
 
+      {/* Dialog Créer un nouvel écran */}
+      <Dialog.Root open={addScreenDialogOpen} onOpenChange={(e) => !e.open && setAddScreenDialogOpen(false)}>
+        <Dialog.Backdrop bg="blackAlpha.600" backdropFilter="blur(4px)" />
+        <Dialog.Positioner>
+          <Dialog.Content
+            maxW="420px"
+            borderRadius="xl"
+            boxShadow="xl"
+            bg="white"
+            borderWidth="1px"
+            borderColor="gray.200"
+          >
+            <Dialog.Header
+              py={4}
+              px={6}
+              borderBottomWidth="1px"
+              borderColor="gray.100"
+              bg="gray.50"
+            >
+              <Dialog.Title fontSize="lg" fontWeight="semibold" color="gray.900">
+                Créer un nouvel écran
+              </Dialog.Title>
+              <Dialog.CloseTrigger />
+            </Dialog.Header>
+            <Dialog.Body py={6} px={6}>
+              <Text fontSize="sm" color="gray.600" mb={3}>
+                Saisissez le nom de l&apos;écran. Il sera créé vide et placé en haut de la liste.
+              </Text>
+              <Input
+                placeholder="Ex : Contexte, Écran de saisie..."
+                value={newScreenName}
+                onChange={(e) => setNewScreenName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && confirmAddScreen()}
+                size="md"
+                borderRadius="md"
+                borderColor="gray.300"
+                _focus={{ borderColor: '#422AFB', boxShadow: '0 0 0 1px #422AFB' }}
+              />
+              <Flex justifyContent="flex-end" gap={3} mt={5}>
+                <Button size="sm" variant="outline" onClick={() => setAddScreenDialogOpen(false)}>
+                  Annuler
+                </Button>
+                <Button size="sm" bg="#422AFB" color="white" _hover={{ bg: '#3522d4' }} onClick={confirmAddScreen}>
+                  Créer
+                </Button>
+              </Flex>
+            </Dialog.Body>
+          </Dialog.Content>
+        </Dialog.Positioner>
+      </Dialog.Root>
+
       {/* ChampsModal - Champs, Boutons, GET, msgKOPrevu */}
       {popupData && (
         <ModalContent
@@ -532,7 +668,9 @@ export default function ScreensView() {
           allScreens={currentScreens}
           workbook={workbook}
           currentSheet={currentSheet}
-          extractMode={extractMode}
+          extractMode={effectiveExtractMode}
+          isDefinition={isDefinition}
+          isSoapSheet={isSoapSheet}
           onSave={(updatedScreen) => {
             setScreens((prev) =>
               prev.map((s) => (s.id === updatedScreen.id ? updatedScreen : s))

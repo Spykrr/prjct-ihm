@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { Box, Flex } from '@chakra-ui/react';
 import { Outlet, useParams } from 'react-router-dom';
-import { SidebarProvider, useSidebar } from '../../contexts/SidebarContext';
+import { SidebarProvider } from '../../contexts/SidebarContext';
+import { useSidebar } from '../../contexts/useSidebar';
 import NavbarAdmin from '../../components/navbar/NavbarAdmin';
 import Sidebar from '../../components/sidebar/Sidebar';
 

@@ -1,5 +1,5 @@
 import { Box, Card, Text } from '@chakra-ui/react';
-import { useSidebar } from '../../../contexts/SidebarContext';
+import { useSidebar } from '../../../contexts/useSidebar';
 import TestsFile from '../gestionTest/TestsFile';
 import RefTestFile from '../ordananceTest/RefTestFile';
 import VariablesFile from '../variables/VariablesFile';

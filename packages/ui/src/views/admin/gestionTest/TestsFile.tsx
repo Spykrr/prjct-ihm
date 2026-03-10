@@ -1,5 +1,5 @@
 import { Box, Text } from '@chakra-ui/react';
-import { useSidebar } from '../../../contexts/SidebarContext';
+import { useSidebar } from '../../../contexts/useSidebar';
 
 export default function TestsFile() {
   const { currentTest } = useSidebar();

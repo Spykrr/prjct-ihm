@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Box, Flex, Button, Text, Dialog } from '@chakra-ui/react';
-import { List } from 'lucide-react';
+import { List, LayoutList, MousePointer, Link, MessageSquare, X } from 'lucide-react';
 import ChampsModal from '../../../components/modals/ChampsModal';
 import ChampFieldRow from '../../../components/modals/ChampFieldRow';
 import FormInput from '../../../components/modals/FormInput';
@@ -54,6 +54,8 @@ interface ModalContentProps {
   workbook?: ParsedWorkbook | null;
   currentSheet?: string | null;
   extractMode?: 'init' | 'test';
+  isDefinition?: boolean;
+  isSoapSheet?: boolean;
   onSave: (screen: ParsedScreen) => void;
 }
 
@@ -107,15 +109,19 @@ export default function ModalContent({
   workbook = null,
   currentSheet = null,
   extractMode = 'test',
+  isDefinition = false,
+  isSoapSheet = false,
   onSave,
 }: ModalContentProps) {
   const [editedRow, setEditedRow] = useState<Record<string, unknown>>({});
   const [showBoutonChoices, setShowBoutonChoices] = useState(false);
   const [showChampChoices, setShowChampChoices] = useState(false);
+  const [prevScreenId, setPrevScreenId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (screen) setEditedRow({ ...screen.rawRow });
-  }, [screen, isOpen]);
+  if (screen && isOpen && screen.id !== prevScreenId) {
+    setPrevScreenId(screen.id);
+    setEditedRow({ ...screen.rawRow });
+  }
 
   const updateKey = (key: string, value: string) => {
     setEditedRow((prev) => ({ ...prev, [key]: value }));
@@ -132,6 +138,24 @@ export default function ModalContent({
     get: `GET - ${screen.title}`,
     msgKOPrevu: `msgKOPrevu - ${screen.title}`,
   };
+
+  const titleIcons: Record<ModalType, React.ReactNode> = {
+    champs: <Box color="#422AFB" p={1} borderRadius="md" bg="blue.50"><LayoutList size={22} /></Box>,
+    boutons: <Box color="#422AFB" p={1} borderRadius="md" bg="blue.50"><MousePointer size={22} /></Box>,
+    get: <Box color="#422AFB" p={1} borderRadius="md" bg="blue.50"><Link size={22} /></Box>,
+    msgKOPrevu: <Box color="#422AFB" p={1} borderRadius="md" bg="blue.50"><MessageSquare size={22} /></Box>,
+  };
+
+  const footerButtons = (
+    <Flex justifyContent="flex-end" mt={6} pt={4} borderTopWidth="1px" borderColor="gray.100" gap={3}>
+      <Button size="sm" variant="outline" onClick={onClose}>
+        Annuler
+      </Button>
+      <Button size="sm" bg="#422AFB" color="white" _hover={{ bg: '#3522d4' }} onClick={handleSave}>
+        Enregistrer
+      </Button>
+    </Flex>
+  );
 
   if (type === 'champs') {
     const isTestMode = extractMode === 'test';
@@ -185,7 +209,7 @@ export default function ModalContent({
     const optionToLibelle = buildOptionToLibelle(allScreens);
 
     return (
-      <ChampsModal isOpen={isOpen} onClose={onClose} title={titles.champs}>
+      <ChampsModal isOpen={isOpen} onClose={onClose} title={titles.champs} titleIcon={titleIcons.champs}>
         <Box>
           {items.map((item) => (
             <ChampFieldRow
@@ -218,26 +242,50 @@ export default function ModalContent({
               variant="outline"
               gap={2}
               onClick={() => setShowChampChoices(true)}
+              borderColor="gray.300"
+              _hover={{ bg: 'gray.50', borderColor: '#422AFB' }}
             >
               <List size={14} /> Choisir un champ de l&apos;écran
             </Button>
           )}
 
           <Dialog.Root open={showChampChoices} onOpenChange={(e) => !e.open && setShowChampChoices(false)}>
-            <Dialog.Backdrop />
+            <Dialog.Backdrop bg="blackAlpha.600" backdropFilter="blur(4px)" />
             <Dialog.Positioner>
-              <Dialog.Content maxW="400px">
-                <Dialog.Header>
-                  <Dialog.Title>Champs disponibles dans l&apos;écran</Dialog.Title>
-                  <Dialog.CloseTrigger />
+              <Dialog.Content
+                maxW="400px"
+                borderRadius="xl"
+                boxShadow="xl"
+                bg="white"
+                borderWidth="1px"
+                borderColor="gray.200"
+              >
+                <Dialog.Header
+                  py={3}
+                  px={4}
+                  borderBottomWidth="1px"
+                  borderColor="gray.100"
+                  bg="gray.50"
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="space-between"
+                >
+                  <Dialog.Title fontSize="md" fontWeight="semibold" color="gray.900">
+                    Champs disponibles dans l&apos;écran
+                  </Dialog.Title>
+                  <Dialog.CloseTrigger asChild>
+                    <Box as="button" p={1.5} borderRadius="md" color="gray.500" _hover={{ bg: 'gray.200' }} aria-label="Fermer">
+                      <X size={18} />
+                    </Box>
+                  </Dialog.CloseTrigger>
                 </Dialog.Header>
-                <Dialog.Body maxH="300px" overflowY="auto">
+                <Dialog.Body maxH="300px" overflowY="auto" py={4} px={4}>
                   {availableChamps.length === 0 ? (
                     <Text color="gray.500" fontSize="sm">
                       Aucun champ défini pour cet écran
                     </Text>
                   ) : (
-                    <Box display="flex" flexDirection="column" gap={1}>
+                    <Box display="flex" flexDirection="column" gap={2}>
                       {availableChamps.map((champ) => (
                         <Button
                           key={champ.value}
@@ -245,6 +293,9 @@ export default function ModalContent({
                           variant="outline"
                           justifyContent="flex-start"
                           fontWeight="normal"
+                          borderRadius="md"
+                          borderColor="gray.200"
+                          _hover={{ bg: 'blue.50', borderColor: '#422AFB' }}
                           onClick={() => {
                             const emptyKey = CHAMP_STD_KEYS.find((k) => !editedRow[k] || !String(editedRow[k]).trim());
                             if (emptyKey) {
@@ -263,10 +314,7 @@ export default function ModalContent({
             </Dialog.Positioner>
           </Dialog.Root>
 
-          <Flex justifyContent="flex-end" mt={4} gap={2}>
-            <Button size="sm" variant="outline" onClick={onClose}>Annuler</Button>
-            <Button size="sm" onClick={handleSave}>Enregistrer</Button>
-          </Flex>
+          {footerButtons}
         </Box>
       </ChampsModal>
     );
@@ -285,7 +333,7 @@ export default function ModalContent({
     const availableButtons = getAvailableButtonsFromScreen(screen);
 
     return (
-      <ChampsModal isOpen={isOpen} onClose={onClose} title={titles.boutons}>
+      <ChampsModal isOpen={isOpen} onClose={onClose} title={titles.boutons} titleIcon={titleIcons.boutons}>
         <Box>
           {items.map((item) => (
             <FormInput
@@ -305,25 +353,49 @@ export default function ModalContent({
             gap={2}
             mt={2}
             onClick={() => setShowBoutonChoices(true)}
+            borderColor="gray.300"
+            _hover={{ bg: 'gray.50', borderColor: '#422AFB' }}
           >
             <List size={14} /> Choisir un bouton de l&apos;écran
           </Button>
 
           <Dialog.Root open={showBoutonChoices} onOpenChange={(e) => !e.open && setShowBoutonChoices(false)}>
-            <Dialog.Backdrop />
+            <Dialog.Backdrop bg="blackAlpha.600" backdropFilter="blur(4px)" />
             <Dialog.Positioner>
-              <Dialog.Content maxW="400px">
-                <Dialog.Header>
-                  <Dialog.Title>Boutons disponibles dans l&apos;écran</Dialog.Title>
-                  <Dialog.CloseTrigger />
+              <Dialog.Content
+                maxW="400px"
+                borderRadius="xl"
+                boxShadow="xl"
+                bg="white"
+                borderWidth="1px"
+                borderColor="gray.200"
+              >
+                <Dialog.Header
+                  py={3}
+                  px={4}
+                  borderBottomWidth="1px"
+                  borderColor="gray.100"
+                  bg="gray.50"
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="space-between"
+                >
+                  <Dialog.Title fontSize="md" fontWeight="semibold" color="gray.900">
+                    Boutons disponibles dans l&apos;écran
+                  </Dialog.Title>
+                  <Dialog.CloseTrigger asChild>
+                    <Box as="button" p={1.5} borderRadius="md" color="gray.500" _hover={{ bg: 'gray.200' }} aria-label="Fermer">
+                      <X size={18} />
+                    </Box>
+                  </Dialog.CloseTrigger>
                 </Dialog.Header>
-                <Dialog.Body maxH="300px" overflowY="auto">
+                <Dialog.Body maxH="300px" overflowY="auto" py={4} px={4}>
                   {availableButtons.length === 0 ? (
                     <Text color="gray.500" fontSize="sm">
                       Aucun bouton défini pour cet écran
                     </Text>
                   ) : (
-                    <Box display="flex" flexDirection="column" gap={1}>
+                    <Box display="flex" flexDirection="column" gap={2}>
                       {availableButtons.map((btn) => (
                         <Button
                           key={btn.value}
@@ -331,6 +403,9 @@ export default function ModalContent({
                           variant="outline"
                           justifyContent="flex-start"
                           fontWeight="normal"
+                          borderRadius="md"
+                          borderColor="gray.200"
+                          _hover={{ bg: 'blue.50', borderColor: '#422AFB' }}
                           onClick={() => {
                             const emptyKey = BOUTON_STD_KEYS.find((k) => !editedRow[k] || !String(editedRow[k]).trim());
                             if (emptyKey) {
@@ -349,10 +424,7 @@ export default function ModalContent({
             </Dialog.Positioner>
           </Dialog.Root>
 
-          <Flex justifyContent="flex-end" mt={4} gap={2}>
-            <Button size="sm" variant="outline" onClick={onClose}>Annuler</Button>
-            <Button size="sm" onClick={handleSave}>Enregistrer</Button>
-          </Flex>
+          {footerButtons}
         </Box>
       </ChampsModal>
     );
@@ -363,7 +435,7 @@ export default function ModalContent({
     const value = String(editedRow[getKey] ?? '');
 
     return (
-      <ChampsModal isOpen={isOpen} onClose={onClose} title={titles.get}>
+      <ChampsModal isOpen={isOpen} onClose={onClose} title={titles.get} titleIcon={titleIcons.get}>
         <Box>
           <GetInput
             nbrOfField={3}
@@ -371,10 +443,7 @@ export default function ModalContent({
             value={value}
             onChange={(v) => updateKey(getKey, v)}
           />
-          <Flex justifyContent="flex-end" mt={4} gap={2}>
-            <Button size="sm" variant="outline" onClick={onClose}>Annuler</Button>
-            <Button size="sm" onClick={handleSave}>Enregistrer</Button>
-          </Flex>
+          {footerButtons}
         </Box>
       </ChampsModal>
     );
@@ -385,7 +454,7 @@ export default function ModalContent({
     const value = String(editedRow[msgKey] ?? '');
 
     return (
-      <ChampsModal isOpen={isOpen} onClose={onClose} title={titles.msgKOPrevu}>
+      <ChampsModal isOpen={isOpen} onClose={onClose} title={titles.msgKOPrevu} titleIcon={titleIcons.msgKOPrevu}>
         <Box>
           <GetInput
             nbrOfField={1}
@@ -393,10 +462,7 @@ export default function ModalContent({
             value={value}
             onChange={(v) => updateKey(msgKey, v)}
           />
-          <Flex justifyContent="flex-end" mt={4} gap={2}>
-            <Button size="sm" variant="outline" onClick={onClose}>Annuler</Button>
-            <Button size="sm" onClick={handleSave}>Enregistrer</Button>
-          </Flex>
+          {footerButtons}
         </Box>
       </ChampsModal>
     );

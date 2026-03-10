@@ -1,6 +1,6 @@
 import { Box, Flex, Button } from '@chakra-ui/react';
 import { useNavigate } from 'react-router-dom';
-import { useSidebar } from '../../contexts/SidebarContext';
+import { useSidebar } from '../../contexts/useSidebar';
 import NavbarLinksAdmin from './NavbarLinksAdmin';
 
 const TAB_NAMES: Record<string, string> = {

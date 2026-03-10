@@ -1,22 +1,7 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import { SidebarContext, type FeuillesData } from './sidebarContextDef';
 
-export type FeuilleData = Record<string, unknown>[] | Record<string, unknown>;
-export type FeuillesData = Record<string, Record<string, FeuilleData>>;
-
-interface SidebarContextValue {
-  feuillesData: FeuillesData;
-  setFeuillesData: (data: FeuillesData | ((prev: FeuillesData) => FeuillesData)) => void;
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
-  currentFeuille: string;
-  setCurrentFeuille: (feuille: string) => void;
-  currentTest: string;
-  setCurrentTest: (test: string) => void;
-  isDefinition: boolean;
-  setIsDefinition: (v: boolean) => void;
-  fileName: string;
-  setFileName: (name: string) => void;
-}
+export type { FeuilleData, FeuillesData } from './sidebarContextDef';
 
 const defaultFeuillesData: FeuillesData = {
   '1': { Feuille1: [] },
@@ -24,8 +9,6 @@ const defaultFeuillesData: FeuillesData = {
   '3': { Feuille1: [] },
   '4': { lists: {}, fixed_vars: {}, amount_ranges: {}, passwords: {} },
 };
-
-const SidebarContext = createContext<SidebarContextValue | null>(null);
 
 export function SidebarProvider({ children }: { children: ReactNode }) {
   const [feuillesData, setFeuillesData] = useState<FeuillesData>(defaultFeuillesData);
@@ -55,10 +38,4 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       {children}
     </SidebarContext.Provider>
   );
-}
-
-export function useSidebar() {
-  const ctx = useContext(SidebarContext);
-  if (!ctx) throw new Error('useSidebar must be used within SidebarProvider');
-  return ctx;
 }

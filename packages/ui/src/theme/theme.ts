@@ -1,21 +1,40 @@
 import { createSystem, defaultConfig, defineConfig } from '@chakra-ui/react';
 
 const config = defineConfig({
+  globalCss: {
+    html: {
+      colorPalette: 'blue',
+    },
+  },
   theme: {
     tokens: {
       colors: {
+        // Palette bleue principale (theme de l'application — #422AFB)
+        blue: {
+          50: { value: '#ede9fe' },
+          100: { value: '#ddd6fe' },
+          200: { value: '#c4b5fd' },
+          300: { value: '#a78bfa' },
+          400: { value: '#7c5cfc' },
+          500: { value: '#422AFB' },
+          600: { value: '#3522d4' },
+          700: { value: '#2b1fbf' },
+          800: { value: '#221a99' },
+          900: { value: '#1a1473' },
+          950: { value: '#16104d' },
+        },
         brand: {
-          50: { value: '#e6f2ff' },
-          100: { value: '#bfdeff' },
-          200: { value: '#99caff' },
-          300: { value: '#66b3ff' },
-          400: { value: '#3399ff' },
-          500: { value: '#0077ff' },
-          600: { value: '#0066dd' },
-          700: { value: '#0055bb' },
-          800: { value: '#004499' },
-          900: { value: '#003377' },
-          950: { value: '#001a44' },
+          50: { value: '#ede9fe' },
+          100: { value: '#ddd6fe' },
+          200: { value: '#c4b5fd' },
+          300: { value: '#a78bfa' },
+          400: { value: '#7c5cfc' },
+          500: { value: '#422AFB' },
+          600: { value: '#3522d4' },
+          700: { value: '#2b1fbf' },
+          800: { value: '#221a99' },
+          900: { value: '#1a1473' },
+          950: { value: '#16104d' },
         },
       },
     },

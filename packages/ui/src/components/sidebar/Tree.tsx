@@ -1,5 +1,5 @@
 import { Box, Text } from '@chakra-ui/react';
-import { useSidebar } from '../../contexts/SidebarContext';
+import { useSidebar } from '../../contexts/useSidebar';
 import type { SheetRow } from '@uptest/core';
 
 const COLUMN_TYPE = '${type}';
