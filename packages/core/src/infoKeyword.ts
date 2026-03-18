@@ -36,6 +36,21 @@ export function getInfoByKeyword(keyword: string): string {
 
   const k = keyword.trim().toUpperCase();
 
+  // Codes "legacy" utilisés dans certains référentiels (ex: 1FE1, 1FS1)
+  // Format observé : <n><F><action><x> (4 caractères)
+  // - FE* : saisie + Entrée
+  // - FS* : sélection dans une liste (select)
+  if (k.length === 4 && /^[0-9]{1,2}F[A-Z][0-9]$/.test(k)) {
+    const action = k[2];
+    if (action === 'E') return `Insertion dans la zone de texte puis appuie sur la touche clavier « Entrée »`;
+    if (action === 'S') return `Sélection de la valeur saisie dans la liste (select)`;
+    if (action === 'R') return `Sélection du bouton radio`;
+    if (action === 'C') return `Sélection de la case à cocher (checkbox)`;
+    if (action === 'D') return `Double-clic`;
+    if (action === 'K') return `Clic`;
+    return '';
+  }
+
   // Champ (4 caractères)
   if (k.length === 4 && /^[1-9]\d?[IRCS][PA][A-Z]$/.test(k)) {
     const num = k[0];

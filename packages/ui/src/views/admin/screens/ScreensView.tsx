@@ -28,11 +28,22 @@ import {
   MousePointerClick,
   MessageSquare,
 } from 'lucide-react';
-import { parseExcel, type ParsedScreen, type ParsedWorkbook } from '@uptest/core';
+import { parseExcel, generateExcel, COLUMN_KEYS, type ParsedScreen, type ParsedWorkbook } from '@uptest/core';
 import { openExcelFile } from '../../../utils/fileImport';
 import { useSidebar } from '../../../contexts/useSidebar';
 import { useToast } from '../../../contexts/ToastContext';
 import ModalContent from './ModalContent';
+import * as XLSX from 'xlsx';
+
+function downloadXlsx(buffer: ArrayBuffer, fileName: string) {
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 type Screen = ParsedScreen;
 type TestDisplayNamesMap = Record<string, Record<string, string>>;
@@ -96,6 +107,71 @@ export default function ScreensView() {
   const [renameTestValue, setRenameTestValue] = useState('');
   const [testToDelete, setTestToDelete] = useState<{ sheetName: string; testId: string } | null>(null);
   const [confirmReplaceImportOpen, setConfirmReplaceImportOpen] = useState(false);
+
+  const handleExport = () => {
+    if (!currentSheet || screens.length === 0) return;
+    if (!importBuffer) return;
+
+    // Partir du fichier d'origine pour conserver le rendu Excel (notes, etc.)
+    const wb = XLSX.read(importBuffer.buffer, { type: 'array', cellComments: true } as any);
+    const ws = wb.Sheets[currentSheet];
+    if (!ws) return;
+
+    // Map colonne (index) via la ligne d'en-têtes (1ère ligne)
+    const ref = ws['!ref'] as string | undefined;
+    if (!ref) return;
+    const range = XLSX.utils.decode_range(ref);
+    const headerRow = range.s.r;
+    const headerByCol: string[] = [];
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const addr = XLSX.utils.encode_cell({ r: headerRow, c });
+      const cell = ws[addr] as XLSX.CellObject | undefined;
+      headerByCol[c] = cell?.v != null ? String(cell.v).trim() : '';
+    }
+    const findColIndexForStdKey = (stdKey: string): number | undefined => {
+      const target = stdKey.toLowerCase().replace(/\s+/g, '');
+      for (let c = 0; c < headerByCol.length; c++) {
+        const h = (headerByCol[c] ?? '').toString().toLowerCase().replace(/\s+/g, '');
+        if (!h) continue;
+        if (h === target) return c;
+        const t2 = target.replace(/[${}]/g, '');
+        if (t2 && h.includes(t2)) return c;
+      }
+      return undefined;
+    };
+    const stdKeyToCol: Record<string, number> = {};
+    for (const k of COLUMN_KEYS) {
+      const col = findColIndexForStdKey(k);
+      if (col != null) stdKeyToCol[k] = col;
+    }
+
+    // Ecrit les valeurs + notes sur les lignes (2..)
+    screens.forEach((screen, idx) => {
+      const excelRow0 = headerRow + 1 + idx; // ligne juste sous header
+      for (const stdKey of COLUMN_KEYS) {
+        const colIdx = stdKeyToCol[stdKey];
+        if (colIdx == null) continue;
+        const addr = XLSX.utils.encode_cell({ r: excelRow0, c: colIdx });
+        const val = (screen.rawRow as Record<string, unknown>)[stdKey];
+        const cell = (ws[addr] ?? (ws[addr] = { t: 'z' } as XLSX.CellObject)) as XLSX.CellObject & { c?: any[] };
+        cell.t = 's';
+        cell.v = val == null ? '' : String(val);
+        // Notes
+        const comment = (screen.comments ?? {})[stdKey];
+        if (comment && comment.trim()) {
+          cell.c = [{ a: 'Uptest', t: comment.trim() }];
+        } else if (cell.c) {
+          delete cell.c;
+        }
+        ws[addr] = cell;
+      }
+    });
+
+    const out = XLSX.write(wb, { type: 'array', bookType: 'xlsx', cellComments: true } as any) as ArrayBuffer;
+    const base = importBuffer.fileName?.replace(/\.xlsx$/i, '') ?? 'uptest';
+    downloadXlsx(out, `${base}.xlsx`);
+    showSuccess('Fichier Excel téléchargé');
+  };
 
   const effectiveExtractMode = isDefinition ? 'init' : extractMode;
   const resolvedTestIdForExtract = useMemo(() => {
@@ -593,6 +669,7 @@ export default function ScreensView() {
               _hover={{ bg: '#3522d4', boxShadow: '0 3px 10px rgba(66, 42, 251, 0.3)', transform: 'translateY(-1px)' }}
               _active={{ transform: 'translateY(0)' }}
               transition="all 0.2s"
+              onClick={handleExport}
             >
               <Download size={16} />
               Sauvegarder

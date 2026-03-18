@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Box, Flex, Button, Checkbox, Input, Text, Dialog } from '@chakra-ui/react';
+import { Box, Flex, Button, Checkbox, Input, Text, Dialog, Tooltip } from '@chakra-ui/react';
 import { Trash2, Pencil, X, Link2, Settings } from 'lucide-react';
 import { type RefOption } from '@uptest/core';
 import {
@@ -235,7 +235,7 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
         </Flex>
 
         {/* Libellé - lecture seule, style "non modifiable" */}
-        <Flex alignItems="center" gap={2} flexShrink={0} minW="280px">
+        <Flex alignItems="center" gap={2} flexShrink={1} minW={0}>
           <Text fontSize="xs" fontWeight="medium" color="gray.500" whiteSpace="nowrap">
             Libellé :
           </Text>
@@ -249,13 +249,44 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
             borderStyle="dashed"
             borderColor="gray.400"
             bg="gray.200"
-            minW="240px"
+            minW={0}
+            maxW="240px"
+            w="240px"
+            overflow="hidden"
             cursor="default"
             userSelect="none"
           >
-            <Text fontSize="sm" color="gray.600" lineClamp={1} flex={1} minW={0}>
-              {(option.Libelle as string) || '—'}
-            </Text>
+            <Tooltip.Root openDelay={150} closeDelay={50}>
+              <Tooltip.Trigger asChild>
+                <Text
+                  fontSize="sm"
+                  color="gray.600"
+                  lineClamp={1}
+                  flex={1}
+                  minW={0}
+                  whiteSpace="nowrap"
+                  overflow="hidden"
+                  textOverflow="ellipsis"
+                >
+                  {(option.Libelle as string) || '—'}
+                </Text>
+              </Tooltip.Trigger>
+              <Tooltip.Positioner>
+                <Tooltip.Content
+                  maxW="420px"
+                  fontSize="sm"
+                  bg="gray.900"
+                  color="white"
+                  px={3}
+                  py={2}
+                  borderRadius="md"
+                  boxShadow="lg"
+                >
+                  <Tooltip.Arrow bg="gray.900" />
+                  {(option.Libelle as string) || '—'}
+                </Tooltip.Content>
+              </Tooltip.Positioner>
+            </Tooltip.Root>
           </Flex>
         </Flex>
 

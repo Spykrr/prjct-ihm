@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Flex, Input, Button, Text } from '@chakra-ui/react';
 import { Trash2 } from 'lucide-react';
+import InfoTooltipIcon from './InfoTooltipIcon';
 
 interface ChampFieldRowProps {
   label: string;
@@ -13,6 +14,10 @@ interface ChampFieldRowProps {
   valuePlaceholder?: string;
   isLabelEditable?: boolean;
   valueMaxLength?: number;
+  /** Texte d'aide à afficher au survol de l'icône Info (calculé côté parent) */
+  infoMessage?: string;
+  /** Permet d'activer/désactiver l'affichage du tooltip (calculé côté parent) */
+  showTooltip?: boolean;
 }
 
 export default function ChampFieldRow({
@@ -25,10 +30,13 @@ export default function ChampFieldRow({
   valuePlaceholder = '(Non utilisé)',
   isLabelEditable = true,
   valueMaxLength,
+  infoMessage = '',
+  showTooltip = true,
 }: ChampFieldRowProps) {
   const [focused, setFocused] = useState(false);
   const isFilled = !!(value && value.trim());
   const shownValue = focused ? value : (displayValue ?? value);
+  const infoTrimmed = (infoMessage ?? '').trim();
 
   return (
     <Flex
@@ -54,6 +62,7 @@ export default function ChampFieldRow({
             {label || '—'}
           </Text>
         )}
+        {infoTrimmed && <InfoTooltipIcon message={infoMessage} showTooltip={showTooltip} />}
         <Text color="gray.600">:</Text>
       </Flex>
       <Input

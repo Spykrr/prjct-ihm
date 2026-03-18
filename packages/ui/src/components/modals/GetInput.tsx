@@ -1,4 +1,5 @@
 import { Box, Input, Text } from '@chakra-ui/react';
+import InfoTooltipIcon from './InfoTooltipIcon';
 
 interface GetInputProps {
   nbrOfField: 1 | 2 | 3;
@@ -6,6 +7,10 @@ interface GetInputProps {
   value: string;
   onChange: (value: string) => void;
   onBlur?: () => void;
+  /** Texte d'aide tooltip (calculé côté parent) */
+  infoMessage?: string;
+  /** Active/désactive l'affichage de l'icône Info et du tooltip */
+  showTooltip?: boolean;
 }
 
 /** Parse VAR_champ##1IPV → { variableValue, champValue, optionValue } */
@@ -41,14 +46,29 @@ const inputStyle = {
   bg: 'white',
 };
 
-export default function GetInput({ nbrOfField, label = 'GET', value, onChange, onBlur }: GetInputProps) {
+export default function GetInput({
+  nbrOfField,
+  label = 'GET',
+  value,
+  onChange,
+  onBlur,
+  infoMessage = '',
+  showTooltip = true,
+}: GetInputProps) {
   const parsed = parseGetValue(value);
   const labelProps = { fontSize: 'sm' as const, fontWeight: 'medium' as const, color: 'gray.600' as const, mb: 1.5 };
 
   if (nbrOfField === 1) {
     return (
       <Box>
-        <Text {...labelProps}>{label}</Text>
+        {label?.trim() ? (
+          <Box display="flex" alignItems="center" gap={2} mb={1.5}>
+            <Text {...labelProps} mb={0}>
+              {label}
+            </Text>
+            <InfoTooltipIcon message={infoMessage} showTooltip={showTooltip} />
+          </Box>
+        ) : null}
         <Input
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -109,7 +129,12 @@ export default function GetInput({ nbrOfField, label = 'GET', value, onChange, o
         />
       </Box>
       <Box>
-        <Text {...labelProps}>Option (4 car.)</Text>
+        <Box display="flex" alignItems="center" gap={2}>
+          <Text {...labelProps} mb={0}>
+            Option (4 car.)
+          </Text>
+          <InfoTooltipIcon message={infoMessage} showTooltip={showTooltip} />
+        </Box>
         <Input
           value={parsed.optionValue}
           onChange={(e) => onChange(buildGetValue(parsed.variableValue, parsed.champValue, e.target.value.slice(0, 4)))}
