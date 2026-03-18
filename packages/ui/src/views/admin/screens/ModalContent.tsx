@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { Box, Flex, Button, Text, Dialog } from '@chakra-ui/react';
-import { List, LayoutList, MousePointer, Link, MessageSquare, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Box, Flex, Button, Text, Dialog, Input, Tooltip } from '@chakra-ui/react';
+import { List, LayoutList, MousePointer, Link, MessageSquare, X, Trash2, Plus } from 'lucide-react';
 import ChampsModal from '../../../components/modals/ChampsModal';
 import ChampFieldRow from '../../../components/modals/ChampFieldRow';
 import FormInput from '../../../components/modals/FormInput';
@@ -11,6 +11,7 @@ import {
   normalizeRowKeys,
   type ParsedScreen,
   type ParsedWorkbook,
+  getInfoByKeyword,
 } from '@uptest/core';
 
 type ModalType = 'champs' | 'boutons' | 'get' | 'msgKOPrevu';
@@ -109,14 +110,16 @@ export default function ModalContent({
   workbook = null,
   currentSheet = null,
   extractMode = 'test',
-  isDefinition = false,
-  isSoapSheet = false,
+  isDefinition: _isDefinition = false,
+  isSoapSheet: _isSoapSheet = false,
   onSave,
 }: ModalContentProps) {
   const [editedRow, setEditedRow] = useState<Record<string, unknown>>({});
   const [showBoutonChoices, setShowBoutonChoices] = useState(false);
   const [showChampChoices, setShowChampChoices] = useState(false);
   const [prevScreenId, setPrevScreenId] = useState<string | null>(null);
+  const [definitionChampVisibleCount, setDefinitionChampVisibleCount] = useState<number>(0);
+  const [definitionBoutonVisibleCount, setDefinitionBoutonVisibleCount] = useState<number>(0);
 
   if (screen && isOpen && screen.id !== prevScreenId) {
     setPrevScreenId(screen.id);
@@ -132,6 +135,42 @@ export default function ModalContent({
     onClose();
   };
 
+  // Mode définition (Champs): afficher seulement les lignes utiles, et permettre d'en "ajouter" via un bouton +
+  useEffect(() => {
+    if (!isOpen) return;
+    const isDefinitionMode = _isDefinition || extractMode === 'init';
+    if (type !== 'champs' || !isDefinitionMode) return;
+
+    const filled = CHAMP_STD_KEYS.reduce((acc, key) => {
+      const v = String(editedRow[key] ?? '').trim();
+      if (!v) return acc;
+      const { label, option } = parseLibelleOption(v);
+      return acc + ((label.trim() || option.trim()) ? 1 : 0);
+    }, 0);
+
+    // Au moins 1 ligne visible, et une ligne de plus que le contenu existant
+    const next = Math.min(CHAMP_STD_KEYS.length, Math.max(1, filled + 1));
+    setDefinitionChampVisibleCount(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, type, _isDefinition, extractMode, screen.id]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const isDefinitionMode = _isDefinition || extractMode === 'init';
+    if (type !== 'boutons' || !isDefinitionMode) return;
+
+    const filled = BOUTON_STD_KEYS.reduce((acc, key) => {
+      const v = String(editedRow[key] ?? '').trim();
+      if (!v) return acc;
+      const { label, option } = parseLibelleOption(v);
+      return acc + ((label.trim() || option.trim()) ? 1 : 0);
+    }, 0);
+
+    const next = Math.min(BOUTON_STD_KEYS.length, Math.max(1, filled + 1));
+    setDefinitionBoutonVisibleCount(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, type, _isDefinition, extractMode, screen.id]);
+
   const titles: Record<ModalType, string> = {
     champs: `Champs - ${screen.title}`,
     boutons: `Boutons - ${screen.title}`,
@@ -140,18 +179,43 @@ export default function ModalContent({
   };
 
   const titleIcons: Record<ModalType, React.ReactNode> = {
-    champs: <Box color="#422AFB" p={1} borderRadius="md" bg="blue.50"><LayoutList size={22} /></Box>,
-    boutons: <Box color="#422AFB" p={1} borderRadius="md" bg="blue.50"><MousePointer size={22} /></Box>,
-    get: <Box color="#422AFB" p={1} borderRadius="md" bg="blue.50"><Link size={22} /></Box>,
-    msgKOPrevu: <Box color="#422AFB" p={1} borderRadius="md" bg="blue.50"><MessageSquare size={22} /></Box>,
+    champs: <Box color="#422AFB" p={2} borderRadius="lg" bg="blue.50"><LayoutList size={22} strokeWidth={2} /></Box>,
+    boutons: <Box color="#422AFB" p={2} borderRadius="lg" bg="blue.50"><MousePointer size={22} strokeWidth={2} /></Box>,
+    get: <Box color="#422AFB" p={2} borderRadius="lg" bg="blue.50"><Link size={22} strokeWidth={2} /></Box>,
+    msgKOPrevu: <Box color="#422AFB" p={2} borderRadius="lg" bg="blue.50"><MessageSquare size={22} strokeWidth={2} /></Box>,
   };
 
   const footerButtons = (
     <Flex justifyContent="flex-end" mt={6} pt={4} borderTopWidth="1px" borderColor="gray.100" gap={3}>
-      <Button size="sm" variant="outline" onClick={onClose}>
+      <Button
+        size="md"
+        variant="outline"
+        px={5}
+        py={2.5}
+        fontWeight="medium"
+        borderRadius="xl"
+        borderColor="gray.200"
+        color="gray.700"
+        _hover={{ bg: 'gray.50', borderColor: 'gray.300' }}
+        transition="all 0.2s"
+        onClick={onClose}
+      >
         Annuler
       </Button>
-      <Button size="sm" bg="#422AFB" color="white" _hover={{ bg: '#3522d4' }} onClick={handleSave}>
+      <Button
+        size="md"
+        px={5}
+        py={2.5}
+        fontWeight="medium"
+        borderRadius="xl"
+        bg="#422AFB"
+        color="white"
+        boxShadow="0 2px 8px rgba(66, 42, 251, 0.25)"
+        _hover={{ bg: '#3522d4', boxShadow: '0 4px 14px rgba(66, 42, 251, 0.35)', transform: 'translateY(-1px)' }}
+        _active={{ transform: 'translateY(0)' }}
+        transition="all 0.2s"
+        onClick={handleSave}
+      >
         Enregistrer
       </Button>
     </Flex>
@@ -159,6 +223,7 @@ export default function ModalContent({
 
   if (type === 'champs') {
     const isTestMode = extractMode === 'test';
+    const isDefinitionMode = _isDefinition || extractMode === 'init';
     const rawInitRow =
       isTestMode &&
       workbook &&
@@ -169,6 +234,130 @@ export default function ModalContent({
         findValueByKeyPattern
       );
     const initRow = rawInitRow ? normalizeRowKeys(rawInitRow) : undefined;
+
+    // Mode définition : grille Champ i / Option i (ajout via +)
+    if (isDefinitionMode && !initRow) {
+      const rows = CHAMP_STD_KEYS.map((key, idx) => {
+        const val = String(editedRow[key] ?? '');
+        const { label, option } = parseLibelleOption(val);
+        return { key, idx: idx + 1, label: label ?? '', option: option ?? '' };
+      });
+      const visibleRows = rows.slice(0, Math.max(1, Math.min(definitionChampVisibleCount || 1, rows.length)));
+      const visibleCount = Math.max(1, Math.min(definitionChampVisibleCount || 1, rows.length));
+
+      const deleteRowAndShiftUp = (rowIndex0: number) => {
+        setEditedRow((prev) => {
+          const next = { ...prev };
+          for (let i = rowIndex0; i < CHAMP_STD_KEYS.length - 1; i++) {
+            next[CHAMP_STD_KEYS[i]] = next[CHAMP_STD_KEYS[i + 1]] ?? '';
+          }
+          next[CHAMP_STD_KEYS[CHAMP_STD_KEYS.length - 1]] = '';
+          return next;
+        });
+        setDefinitionChampVisibleCount((c) => Math.max(1, (c || visibleCount) - 1));
+      };
+
+      return (
+        <ChampsModal isOpen={isOpen} onClose={onClose} title={titles.champs} titleIcon={titleIcons.champs}>
+          <Box>
+            <Box display="flex" flexDirection="column" gap={3}>
+              {visibleRows.map((r) => (
+                  <Flex key={r.key} alignItems="center" gap={5}>
+                    <Flex flex="1" alignItems="center" gap={3} minW={0}>
+                      <Text fontSize="sm" color="gray.700" w="78px" flexShrink={0}>
+                        Champ {r.idx}:
+                      </Text>
+                      <Input
+                        value={r.label}
+                        onChange={(e) => {
+                          const nextLabel = e.target.value;
+                          const next = nextLabel || r.option ? `${nextLabel}##${r.option}` : '';
+                          updateKey(r.key, next);
+                        }}
+                        placeholder="(Non utilisé)"
+                        size="sm"
+                        borderRadius="full"
+                        borderColor="gray.200"
+                        bg="white"
+                        _placeholder={{ color: 'gray.400' }}
+                      />
+                    </Flex>
+
+                    <Flex flex="1" alignItems="center" gap={3} minW={0}>
+                      <Flex alignItems="center" gap={2} w="90px" flexShrink={0}>
+                        <Text fontSize="sm" color="gray.700" whiteSpace="nowrap">
+                          Option {r.idx}:
+                        </Text>
+                        {(() => {
+                          const msg = getInfoByKeyword(r.option);
+                          return msg ? (
+                            <Tooltip label={msg} placement="top" hasArrow>
+                              <Box as="span" color="gray.400" cursor="help" lineHeight="0">
+                                i
+                              </Box>
+                            </Tooltip>
+                          ) : null;
+                        })()}
+                      </Flex>
+                      <Input
+                        value={r.option}
+                        onChange={(e) => {
+                          const nextOption = e.target.value;
+                          const next = r.label || nextOption ? `${r.label}##${nextOption}` : '';
+                          updateKey(r.key, next);
+                        }}
+                        placeholder="(NON UTILISÉ)"
+                        size="sm"
+                        maxLength={4}
+                        borderRadius="full"
+                        borderColor="gray.200"
+                        bg="white"
+                        _placeholder={{ color: 'gray.400' }}
+                      />
+                    </Flex>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      p={2}
+                      minW="auto"
+                      h="auto"
+                      borderRadius="lg"
+                      color="red.500"
+                      _hover={{ bg: 'red.50', color: 'red.600' }}
+                      onClick={() => deleteRowAndShiftUp(r.idx - 1)}
+                      title="Supprimer ce champ"
+                    >
+                      <Trash2 size={16} />
+                    </Button>
+                  </Flex>
+              ))}
+            </Box>
+
+            <Flex justifyContent="flex-end" mt={5} mb={3}>
+              <Button
+                size="sm"
+                variant="outline"
+                p={2}
+                minW="auto"
+                h="auto"
+                borderRadius="lg"
+                borderColor="gray.300"
+                _hover={{ bg: 'gray.50', borderColor: '#422AFB' }}
+                onClick={() => setDefinitionChampVisibleCount((c) => Math.min(rows.length, (c || 1) + 1))}
+                disabled={(definitionChampVisibleCount || 1) >= rows.length}
+                title="Ajouter un champ"
+                aria-label="Ajouter un champ"
+              >
+                <Plus size={16} />
+              </Button>
+            </Flex>
+
+            {footerButtons}
+          </Box>
+        </ChampsModal>
+      );
+    }
 
     const champKeys = initRow
       ? getChampKeysWithContent(initRow)
@@ -321,6 +510,132 @@ export default function ModalContent({
   }
 
   if (type === 'boutons') {
+    const isDefinitionMode = _isDefinition || extractMode === 'init';
+
+    // Mode définition : interface identique à Champs, mais pour Boutons (10 lignes)
+    if (isDefinitionMode) {
+      const rows = BOUTON_STD_KEYS.map((key, idx) => {
+        const val = String(editedRow[key] ?? '');
+        const { label, option } = parseLibelleOption(val);
+        return { key, idx: idx + 1, label: label ?? '', option: option ?? '' };
+      });
+      const visibleRows = rows.slice(0, Math.max(1, Math.min(definitionBoutonVisibleCount || 1, rows.length)));
+      const visibleCount = Math.max(1, Math.min(definitionBoutonVisibleCount || 1, rows.length));
+
+      const deleteRowAndShiftUp = (rowIndex0: number) => {
+        setEditedRow((prev) => {
+          const next = { ...prev };
+          for (let i = rowIndex0; i < BOUTON_STD_KEYS.length - 1; i++) {
+            next[BOUTON_STD_KEYS[i]] = next[BOUTON_STD_KEYS[i + 1]] ?? '';
+          }
+          next[BOUTON_STD_KEYS[BOUTON_STD_KEYS.length - 1]] = '';
+          return next;
+        });
+        setDefinitionBoutonVisibleCount((c) => Math.max(1, (c || visibleCount) - 1));
+      };
+
+      return (
+        <ChampsModal isOpen={isOpen} onClose={onClose} title={titles.boutons} titleIcon={titleIcons.boutons}>
+          <Box>
+            <Box display="flex" flexDirection="column" gap={3}>
+              {visibleRows.map((r) => (
+                <Flex key={r.key} alignItems="center" gap={5}>
+                  <Flex flex="1" alignItems="center" gap={3} minW={0}>
+                    <Text fontSize="sm" color="gray.700" w="78px" flexShrink={0}>
+                      Bouton {r.idx}:
+                    </Text>
+                    <Input
+                      value={r.label}
+                      onChange={(e) => {
+                        const nextLabel = e.target.value;
+                        const next = nextLabel || r.option ? `${nextLabel}##${r.option}` : '';
+                        updateKey(r.key, next);
+                      }}
+                      placeholder="(Non utilisé)"
+                      size="sm"
+                      borderRadius="full"
+                      borderColor="gray.200"
+                      bg="white"
+                      _placeholder={{ color: 'gray.400' }}
+                    />
+                  </Flex>
+
+                  <Flex flex="1" alignItems="center" gap={3} minW={0}>
+                    <Flex alignItems="center" gap={2} w="90px" flexShrink={0}>
+                      <Text fontSize="sm" color="gray.700" whiteSpace="nowrap">
+                        Option {r.idx}:
+                      </Text>
+                      {(() => {
+                        const msg = getInfoByKeyword(r.option);
+                        return msg ? (
+                          <Tooltip label={msg} placement="top" hasArrow>
+                            <Box as="span" color="gray.400" cursor="help" lineHeight="0">
+                              i
+                            </Box>
+                          </Tooltip>
+                        ) : null;
+                      })()}
+                    </Flex>
+                    <Input
+                      value={r.option}
+                      onChange={(e) => {
+                        const nextOption = e.target.value;
+                        const next = r.label || nextOption ? `${r.label}##${nextOption}` : '';
+                        updateKey(r.key, next);
+                      }}
+                      placeholder="(NON UTILISÉ)"
+                      size="sm"
+                      maxLength={4}
+                      borderRadius="full"
+                      borderColor="gray.200"
+                      bg="white"
+                      _placeholder={{ color: 'gray.400' }}
+                    />
+                  </Flex>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    p={2}
+                    minW="auto"
+                    h="auto"
+                    borderRadius="lg"
+                    color="red.500"
+                    _hover={{ bg: 'red.50', color: 'red.600' }}
+                    onClick={() => deleteRowAndShiftUp(r.idx - 1)}
+                    title="Supprimer ce bouton"
+                  >
+                    <Trash2 size={16} />
+                  </Button>
+                </Flex>
+              ))}
+            </Box>
+
+            <Flex justifyContent="flex-end" mt={5} mb={3}>
+              <Button
+                size="sm"
+                variant="outline"
+                p={2}
+                minW="auto"
+                h="auto"
+                borderRadius="lg"
+                borderColor="gray.300"
+                _hover={{ bg: 'gray.50', borderColor: '#422AFB' }}
+                onClick={() => setDefinitionBoutonVisibleCount((c) => Math.min(rows.length, (c || 1) + 1))}
+                disabled={(definitionBoutonVisibleCount || 1) >= rows.length}
+                title="Ajouter un bouton"
+                aria-label="Ajouter un bouton"
+              >
+                <Plus size={16} />
+              </Button>
+            </Flex>
+
+            {footerButtons}
+          </Box>
+        </ChampsModal>
+      );
+    }
+
     const boutonKeys = getBoutonKeysWithContent(editedRow);
     const items = boutonKeys.length > 0
       ? boutonKeys.map((key) => {
@@ -335,47 +650,50 @@ export default function ModalContent({
     return (
       <ChampsModal isOpen={isOpen} onClose={onClose} title={titles.boutons} titleIcon={titleIcons.boutons}>
         <Box>
+          <Box p={4} borderRadius="xl" bg="gray.50" borderWidth="1px" borderColor="gray.100" mb={4}>
           {items.map((item) => (
             <FormInput
               key={item.key}
               label={item.label}
               option={item.option}
-              optionPlaceholder="1N"
-              optionMaxLength={2}
               onLabelChange={(v) => updateKey(item.key, item.option ? `${v}##${item.option}` : v)}
               onOptionChange={(v) => updateKey(item.key, item.label ? `${item.label}##${v}` : `##${v}`)}
               onDelete={() => updateKey(item.key, '')}
+              showOption={false}
             />
           ))}
           <Button
             size="sm"
             variant="outline"
             gap={2}
-            mt={2}
-            onClick={() => setShowBoutonChoices(true)}
-            borderColor="gray.300"
+            mt={3}
+            py={2}
+            borderRadius="lg"
+            borderColor="gray.200"
             _hover={{ bg: 'gray.50', borderColor: '#422AFB' }}
+            onClick={() => setShowBoutonChoices(true)}
           >
-            <List size={14} /> Choisir un bouton de l&apos;écran
+            <List size={16} strokeWidth={2} /> Choisir un bouton de l&apos;écran
           </Button>
+          </Box>
 
           <Dialog.Root open={showBoutonChoices} onOpenChange={(e) => !e.open && setShowBoutonChoices(false)}>
             <Dialog.Backdrop bg="blackAlpha.600" backdropFilter="blur(4px)" />
             <Dialog.Positioner>
               <Dialog.Content
-                maxW="400px"
-                borderRadius="xl"
-                boxShadow="xl"
+                maxW="420px"
+                borderRadius="2xl"
+                boxShadow="2xl"
                 bg="white"
                 borderWidth="1px"
-                borderColor="gray.200"
+                borderColor="gray.100"
               >
                 <Dialog.Header
-                  py={3}
-                  px={4}
+                  py={4}
+                  px={5}
                   borderBottomWidth="1px"
                   borderColor="gray.100"
-                  bg="gray.50"
+                  bg="white"
                   display="flex"
                   alignItems="center"
                   justifyContent="space-between"
@@ -384,12 +702,12 @@ export default function ModalContent({
                     Boutons disponibles dans l&apos;écran
                   </Dialog.Title>
                   <Dialog.CloseTrigger asChild>
-                    <Box as="button" p={1.5} borderRadius="md" color="gray.500" _hover={{ bg: 'gray.200' }} aria-label="Fermer">
-                      <X size={18} />
+                    <Box as="button" p={2} borderRadius="lg" color="gray.500" _hover={{ bg: 'gray.100' }} aria-label="Fermer">
+                      <X size={18} strokeWidth={2} />
                     </Box>
                   </Dialog.CloseTrigger>
                 </Dialog.Header>
-                <Dialog.Body maxH="300px" overflowY="auto" py={4} px={4}>
+                <Dialog.Body maxH="320px" overflowY="auto" py={4} px={5}>
                   {availableButtons.length === 0 ? (
                     <Text color="gray.500" fontSize="sm">
                       Aucun bouton défini pour cet écran
@@ -403,7 +721,8 @@ export default function ModalContent({
                           variant="outline"
                           justifyContent="flex-start"
                           fontWeight="normal"
-                          borderRadius="md"
+                          py={2.5}
+                          borderRadius="lg"
                           borderColor="gray.200"
                           _hover={{ bg: 'blue.50', borderColor: '#422AFB' }}
                           onClick={() => {
@@ -437,12 +756,14 @@ export default function ModalContent({
     return (
       <ChampsModal isOpen={isOpen} onClose={onClose} title={titles.get} titleIcon={titleIcons.get}>
         <Box>
-          <GetInput
-            nbrOfField={3}
-            label="GET"
-            value={value}
-            onChange={(v) => updateKey(getKey, v)}
-          />
+          <Box p={4} borderRadius="xl" bg="gray.50" borderWidth="1px" borderColor="gray.100" mb={4}>
+            <GetInput
+              nbrOfField={3}
+              label="GET"
+              value={value}
+              onChange={(v) => updateKey(getKey, v)}
+            />
+          </Box>
           {footerButtons}
         </Box>
       </ChampsModal>
@@ -456,12 +777,14 @@ export default function ModalContent({
     return (
       <ChampsModal isOpen={isOpen} onClose={onClose} title={titles.msgKOPrevu} titleIcon={titleIcons.msgKOPrevu}>
         <Box>
-          <GetInput
-            nbrOfField={1}
-            label="Msg"
-            value={value}
-            onChange={(v) => updateKey(msgKey, v)}
-          />
+          <Box p={4} borderRadius="xl" bg="gray.50" borderWidth="1px" borderColor="gray.100" mb={4}>
+            <GetInput
+              nbrOfField={1}
+              label="Msg KO prévu"
+              value={value}
+              onChange={(v) => updateKey(msgKey, v)}
+            />
+          </Box>
           {footerButtons}
         </Box>
       </ChampsModal>

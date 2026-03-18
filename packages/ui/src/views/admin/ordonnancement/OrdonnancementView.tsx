@@ -5,22 +5,27 @@ import {
   Text,
   Button,
   Accordion,
-  Badge,
-  Switch,
+  Menu,
+  Dialog,
 } from '@chakra-ui/react';
-import { Upload, Download, Plus, Trash2, FolderOpen, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react';
+import { Upload, Download, Plus, Trash2, FolderOpen, ChevronUp, ChevronDown, ChevronRight, Network } from 'lucide-react';
 import {
   parseRefCsv,
   generateRefCsv,
   addGrp,
-  addOpt,
   type RefInstance,
   type RefGroup,
   type RefOption,
 } from '@uptest/core';
 import { openCsvFile } from '../../../utils/fileImport';
-import { useSidebar } from '../../../contexts/useSidebar';
+import { useToast } from '../../../contexts/ToastContext';
 import FormInputRef from './FormInputRef';
+import OrganigrammeModal from './OrganigrammeModal';
+
+function isOptionActif(option: { Actif?: string }): boolean {
+  const v = (option.Actif ?? '').toString().trim().toUpperCase();
+  return v === 'O' || v === '1' || v === 'Y' || v === 'OUI' || v === 'YES' || v === 'TRUE' || v === 'X';
+}
 
 function downloadCsv(content: string, fileName: string) {
   const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
@@ -33,14 +38,16 @@ function downloadCsv(content: string, fileName: string) {
 }
 
 export default function OrdonnancementView() {
-  const { isDefinition, setIsDefinition } = useSidebar();
+  const { showSuccess } = useToast();
   const [instances, setInstances] = useState<RefInstance[]>([]);
   const [currentInstance, setCurrentInstance] = useState<string>('');
   const [importError, setImportError] = useState<string | null>(null);
   const [showActiveOnly, setShowActiveOnly] = useState(false);
   const [openGroups, setOpenGroups] = useState<string[]>([]);
+  const [organigrammeOpen, setOrganigrammeOpen] = useState(false);
+  const [confirmReplaceImportOpen, setConfirmReplaceImportOpen] = useState(false);
 
-  const handleImport = async () => {
+  const handleImportRaw = async () => {
     setImportError(null);
     try {
       const result = await openCsvFile();
@@ -56,6 +63,14 @@ export default function OrdonnancementView() {
     }
   };
 
+  const handleImport = async () => {
+    if (instances.length > 0) {
+      setConfirmReplaceImportOpen(true);
+      return;
+    }
+    await handleImportRaw();
+  };
+
   const handleExport = () => {
     if (instances.length === 0) return;
     const csv = generateRefCsv(instances);
@@ -64,6 +79,7 @@ export default function OrdonnancementView() {
 
   const currentInstanceData = instances.find((i) => i.name === currentInstance);
   const groups = currentInstanceData?.childreen ?? [];
+  const [groupToDelete, setGroupToDelete] = useState<{ index: number; label: string } | null>(null);
 
   const updateInstance = (instName: string, newGroups: RefGroup[]) => {
     setInstances((prev) =>
@@ -71,6 +87,36 @@ export default function OrdonnancementView() {
         i.name === instName ? { ...i, childreen: newGroups } : i
       )
     );
+  };
+
+  const renameInstance = (oldName: string) => {
+    const newName = window.prompt('Nouveau nom de l\'instance :', oldName);
+    if (!newName?.trim() || newName.trim() === oldName) return;
+    const trimmed = newName.trim();
+    if (instances.some((i) => i.name === trimmed)) {
+      window.alert('Une instance avec ce nom existe déjà.');
+      return;
+    }
+    setInstances((prev) =>
+      prev.map((i) => (i.name === oldName ? { ...i, name: trimmed } : i))
+    );
+    if (currentInstance === oldName) setCurrentInstance(trimmed);
+    showSuccess('Nom modifié avec succès');
+  };
+
+  const deleteInstance = (instName: string) => {
+    if (!window.confirm(`Supprimer l'instance "${instName}" et tous ses groupes ?`)) return;
+    setInstances((prev) => prev.filter((i) => i.name !== instName));
+    if (currentInstance === instName) {
+      const remaining = instances.filter((i) => i.name !== instName);
+      setCurrentInstance(remaining.length > 0 ? remaining[0].name : '');
+    }
+    showSuccess('Instance supprimée avec succès');
+  };
+
+  const executeInstance = (instName: string) => {
+    setCurrentInstance(instName);
+    showSuccess('Exécution lancée avec succès');
   };
 
   const addGroup = () => {
@@ -82,9 +128,18 @@ export default function OrdonnancementView() {
   };
 
   const deleteGroup = (indexGrp: number) => {
-    if (!currentInstance || !window.confirm('Supprimer ce groupe ?')) return;
-    const newGroups = groups.filter((_, i) => i !== indexGrp);
+    if (!currentInstance) return;
+    const grp = groups[indexGrp];
+    const label = grp?.name?.replace(/^#+\s*/, '') ?? `Groupe ${indexGrp + 1}`;
+    setGroupToDelete({ index: indexGrp, label });
+  };
+
+  const confirmDeleteGroup = () => {
+    if (!currentInstance || groupToDelete == null) return;
+    const newGroups = groups.filter((_, i) => i !== groupToDelete.index);
     updateInstance(currentInstance, newGroups);
+    setGroupToDelete(null);
+    showSuccess('Groupe supprimé avec succès');
   };
 
   const moveGroup = (indexGrp: number, direction: 'up' | 'down') => {
@@ -101,30 +156,64 @@ export default function OrdonnancementView() {
     updateInstance(currentInstance, newGroups);
   };
 
-  const addOption = (indexGrp: number) => {
-    if (!currentInstance) return;
-    const grp = groups[indexGrp];
-    if (!grp) return;
-    const newOpts = addOpt(grp, grp.childreen.length, {
-      Instance: currentInstance,
-      OrdreModule: grp.orderModule,
-    });
-    const newGroups = groups.map((g, i) =>
-      i === indexGrp ? { ...g, childreen: newOpts } : g
-    );
-    updateInstance(currentInstance, newGroups);
-  };
-
   const updateOption = (indexGrp: number, indexOpt: number, opt: RefOption) => {
     if (!currentInstance) return;
-    const newGroups = groups.map((g, i) => {
-      if (i !== indexGrp) return g;
-      const newChildreen = [...g.childreen];
-      newChildreen[indexOpt] = opt;
-      newChildreen.sort((a, b) => (a.ordreOption ?? 0) - (b.ordreOption ?? 0));
-      return { ...g, childreen: newChildreen };
+
+    setInstances((prev) => {
+      return prev.map((inst) => {
+        if (inst.name !== currentInstance) return inst;
+
+        const groupsForInst = inst.childreen ?? [];
+        const targetGroup = groupsForInst[indexGrp];
+        if (!targetGroup) return inst;
+
+        const oldOption = targetGroup.childreen[indexOpt];
+        let newGroupsForInst = groupsForInst.map((g, i) => {
+          if (i !== indexGrp) return g;
+          const newChildreen = [...g.childreen];
+          newChildreen[indexOpt] = opt;
+          newChildreen.sort((a, b) => (a.ordreOption ?? 0) - (b.ordreOption ?? 0));
+          return { ...g, childreen: newChildreen };
+        });
+
+        // Cascade sur les prédécesseurs si l'ordre de groupe a changé
+        if (
+          oldOption &&
+          oldOption.ordreOption != null &&
+          opt.ordreOption != null &&
+          oldOption.ordreOption !== opt.ordreOption
+        ) {
+          const PAD_5_LOCAL = (n: number) => String(Math.max(0, Math.floor(n))).padStart(5, '0');
+          const instanceName = inst.name;
+          const ordreModule =
+            (oldOption.OrdreModule as number | undefined) ??
+            (targetGroup.orderModule as number | undefined) ??
+            0;
+          const module = (oldOption.Module as string | undefined) ?? '';
+
+          const oldKey = `${instanceName}##${PAD_5_LOCAL(ordreModule)}##${PAD_5_LOCAL(
+            oldOption.ordreOption
+          )}##${module}`;
+          const newKey = `${instanceName}##${PAD_5_LOCAL(ordreModule)}##${PAD_5_LOCAL(
+            opt.ordreOption
+          )}##${module}`;
+
+          newGroupsForInst = newGroupsForInst.map((g) => ({
+            ...g,
+            childreen: g.childreen.map((o) => {
+              const pred = (o.Predecesseur as string | undefined) ?? '';
+              if (!pred) return o;
+              if (pred.trim() === oldKey) {
+                return { ...o, Predecesseur: newKey };
+              }
+              return o;
+            }),
+          }));
+        }
+
+        return { ...inst, childreen: newGroupsForInst };
+      });
     });
-    updateInstance(currentInstance, newGroups);
   };
 
   const deleteOption = (indexGrp: number, indexOpt: number) => {
@@ -137,9 +226,13 @@ export default function OrdonnancementView() {
     updateInstance(currentInstance, newGroups);
   };
 
-  const filteredGroups = showActiveOnly
-    ? groups.filter((g) => g.childreen.some((o) => o.Actif === 'O'))
-    : groups;
+  const currentInstanceIndex = instances.findIndex((i) => i.name === currentInstance);
+  const isSecondInstance = currentInstanceIndex === 1;
+  const filteredGroups = isSecondInstance
+    ? groups.filter((g) => g.childreen.some((o) => !isOptionActif(o)))
+    : showActiveOnly
+      ? groups.filter((g) => g.childreen.some((o) => isOptionActif(o)))
+      : groups;
 
   return (
     <Box minH="100vh" display="flex" flexDirection="column" bg="#F8F8F8">
@@ -149,34 +242,36 @@ export default function OrdonnancementView() {
             Ordonnancer les tests
           </Text>
           <Flex alignItems="center" gap={4}>
-            <Flex alignItems="center" gap={2}>
-              <Text fontSize="sm" color="gray.600" fontWeight="medium">
-                Test
-              </Text>
-              <Switch.Root
-                size="sm"
-                checked={isDefinition}
-                onCheckedChange={(e) => setIsDefinition(e.checked)}
-              >
-                <Switch.HiddenInput />
-                <Switch.Control>
-                  <Switch.Thumb />
-                </Switch.Control>
-              </Switch.Root>
-              <Text fontSize="sm" color="gray.600" fontWeight="medium">
-                Définitions
-              </Text>
-            </Flex>
-            <Button variant="outline" size="sm" gap={2} onClick={handleImport} borderColor="gray.300" color="gray.700">
+            <Button
+              variant="outline"
+              size="sm"
+              gap={2}
+              px={3}
+              py={2}
+              fontWeight="medium"
+              borderRadius="lg"
+              borderColor="#422AFB"
+              color="#422AFB"
+              _hover={{ bg: 'rgba(66, 42, 251, 0.08)', borderColor: '#3522d4' }}
+              transition="all 0.2s"
+              onClick={handleImport}
+            >
               <Upload size={16} />
               Importer CSV
             </Button>
             <Button
               size="sm"
               gap={2}
+              px={3}
+              py={2}
+              fontWeight="medium"
+              borderRadius="lg"
               bg="#422AFB"
               color="white"
-              _hover={{ bg: '#3522d4' }}
+              boxShadow="0 2px 6px rgba(66, 42, 251, 0.22)"
+              _hover={{ bg: '#3522d4', boxShadow: '0 3px 10px rgba(66, 42, 251, 0.3)', transform: 'translateY(-1px)' }}
+              _active={{ transform: 'translateY(0)' }}
+              transition="all 0.2s"
               onClick={handleExport}
               disabled={instances.length === 0}
             >
@@ -187,8 +282,76 @@ export default function OrdonnancementView() {
         </Flex>
       </Box>
 
+      {/* Dialog Confirmation suppression groupe */}
+      <Dialog.Root open={!!groupToDelete} onOpenChange={(e) => !e.open && setGroupToDelete(null)}>
+        <Dialog.Backdrop bg="blackAlpha.600" backdropFilter="blur(4px)" />
+        <Dialog.Positioner>
+          <Dialog.Content maxW="420px" borderRadius="xl" boxShadow="xl" bg="white" borderWidth="1px" borderColor="gray.200">
+            <Dialog.Header borderBottomWidth="1px" borderColor="gray.100" py={4} px={6}>
+              <Dialog.Title fontSize="lg" fontWeight="semibold">
+                Supprimer le groupe
+              </Dialog.Title>
+              <Dialog.CloseTrigger />
+            </Dialog.Header>
+            <Dialog.Body py={6} px={6}>
+              <Text fontSize="sm" color="gray.600">
+                Êtes-vous sûr de vouloir supprimer le groupe &quot;{groupToDelete?.label}&quot; ? Cette action est irréversible.
+              </Text>
+              <Flex justifyContent="flex-end" gap={3} mt={5}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  px={4}
+                  py={2}
+                  borderRadius="lg"
+                  borderColor="gray.200"
+                  color="gray.700"
+                  _hover={{ bg: 'gray.50', borderColor: 'gray.300' }}
+                  transition="all 0.2s"
+                  onClick={() => setGroupToDelete(null)}
+                >
+                  Annuler
+                </Button>
+                <Button
+                  size="sm"
+                  px={4}
+                  py={2}
+                  borderRadius="lg"
+                  fontWeight="medium"
+                  bg="red.500"
+                  color="white"
+                  boxShadow="0 2px 6px rgba(220, 38, 38, 0.25)"
+                  _hover={{ bg: 'red.600', boxShadow: '0 3px 10px rgba(220, 38, 38, 0.3)', transform: 'translateY(-1px)' }}
+                  _active={{ transform: 'translateY(0)' }}
+                  transition="all 0.2s"
+                  onClick={confirmDeleteGroup}
+                >
+                  Supprimer
+                </Button>
+              </Flex>
+            </Dialog.Body>
+          </Dialog.Content>
+        </Dialog.Positioner>
+      </Dialog.Root>
+
       <Flex flex="1" overflow="hidden">
         <Box as="aside" w="256px" bg="white" borderRightWidth="1px" borderColor="gray.200" flexShrink={0}>
+          {instances.length > 0 && (
+            <Box p={4} borderBottomWidth="1px">
+              <Button
+                variant="outline"
+                size="sm"
+                w="full"
+                gap={2}
+                onClick={() => setOrganigrammeOpen(true)}
+                borderColor="gray.300"
+                _hover={{ borderColor: '#422AFB', bg: 'blue.50' }}
+              >
+                <Network size={16} />
+                Organigramme
+              </Button>
+            </Box>
+          )}
           <Box p={4} borderBottomWidth="1px">
             <Text fontSize="sm" fontWeight="medium" color="gray.600" mb={2}>
               Instances
@@ -199,29 +362,39 @@ export default function OrdonnancementView() {
               </Text>
             ) : (
               <Box display="flex" flexDirection="column" gap={2}>
-                {instances.map((inst) => (
-                  <Box
-                    key={inst.name}
-                    p={3}
-                    bg={currentInstance === inst.name ? '#e8f0fe' : 'white'}
-                    borderWidth="1px"
-                    borderColor={currentInstance === inst.name ? '#422AFB' : 'gray.200'}
-                    borderRadius="lg"
-                    cursor="pointer"
-                    _hover={{ borderColor: 'gray.300' }}
-                    onClick={() => setCurrentInstance(inst.name)}
-                  >
-                    <Flex alignItems="center" gap={2}>
-                      <FolderOpen size={16} color={currentInstance === inst.name ? '#422AFB' : '#4b5563'} />
-                      <Text fontWeight="medium" fontSize="sm">
-                        {inst.name}
-                      </Text>
-                    </Flex>
-                    <Text fontSize="xs" color="gray.500" mt={1}>
-                      {inst.childreen.length} groupe(s)
+            {instances.map((inst, instIndex) => {
+                  const groupCount = instIndex === 1
+                    ? inst.childreen.filter((g) => g.childreen.some((o) => !isOptionActif(o))).length
+                    : inst.childreen.length;
+              return (
+                <Box
+                  key={inst.name}
+                  p={3}
+                  bg={currentInstance === inst.name ? '#e8f0fe' : 'white'}
+                  borderWidth="1px"
+                  borderColor={currentInstance === inst.name ? '#422AFB' : 'gray.200'}
+                  borderRadius="lg"
+                  cursor="pointer"
+                  _hover={{ borderColor: 'gray.300' }}
+                  onClick={() => setCurrentInstance(inst.name)}
+                >
+                  <Flex alignItems="center" gap={2}>
+                    <Box flexShrink={0}>
+                      <FolderOpen
+                        size={16}
+                        color={currentInstance === inst.name ? '#422AFB' : '#4b5563'}
+                      />
+                    </Box>
+                    <Text fontWeight="medium" fontSize="sm" lineClamp={1}>
+                      {inst.name}
                     </Text>
-                  </Box>
-                ))}
+                  </Flex>
+                  <Text fontSize="xs" color="gray.500" mt={1}>
+                    {groupCount} groupe(s)
+                  </Text>
+                </Box>
+              );
+            })}
               </Box>
             )}
           </Box>
@@ -249,7 +422,21 @@ export default function OrdonnancementView() {
               <Text fontSize="sm" mb={4} textAlign="center" maxW="md">
                 Importez un fichier CSV référentiel (séparateur ;) pour gérer l&apos;ordonnancement des tests.
               </Text>
-              <Button onClick={handleImport} gap={2} bg="#422AFB" color="white" _hover={{ bg: '#3522d4' }}>
+              <Button
+                onClick={handleImport}
+                size="sm"
+                gap={2}
+                px={4}
+                py={2.5}
+                fontWeight="medium"
+                borderRadius="lg"
+                bg="#422AFB"
+                color="white"
+                boxShadow="0 2px 6px rgba(66, 42, 251, 0.22)"
+                _hover={{ bg: '#3522d4', boxShadow: '0 3px 10px rgba(66, 42, 251, 0.3)', transform: 'translateY(-1px)' }}
+                _active={{ transform: 'translateY(0)' }}
+                transition="all 0.2s"
+              >
                 <Upload size={16} />
                 Importer un fichier CSV
               </Button>
@@ -282,8 +469,8 @@ export default function OrdonnancementView() {
                 <Box display="flex" flexDirection="column" gap={3} mb={6}>
                   {filteredGroups.map((grp, indexGrp) => {
                     const grpIndex = groups.indexOf(grp);
-                    const nbrActive = grp.childreen.filter((o) => o.Actif === 'O').length;
                     const groupLabel = grp.name.replace(/^#+\s*/, '');
+                    const orderModuleFormatted = String(grp.orderModule ?? 0).padStart(5, '0');
                     const itemValue = `grp-${indexGrp}`;
                     const isOpen = openGroups.includes(itemValue);
                     return (
@@ -299,8 +486,8 @@ export default function OrdonnancementView() {
                         >
                           <Accordion.ItemTrigger asChild>
                             <Box as="button" w="full" textAlign="left" p={4}>
-                              <Flex alignItems="center" justifyContent="space-between">
-                                <Flex alignItems="center" gap={4} flex="1">
+                              <Flex alignItems="center" justifyContent="space-between" gap={4} w="full">
+                                <Flex alignItems="center" gap={4} flex="1" minW={0}>
                                   <Box
                                     as="span"
                                     display="inline-flex"
@@ -310,24 +497,11 @@ export default function OrdonnancementView() {
                                   >
                                     <ChevronRight size={18} />
                                   </Box>
-                                  <Text
-                                    fontSize="sm"
-                                    fontWeight="semibold"
-                                    color="gray.900"
-                                    w="80px"
-                                  >
-                                    Groupe {indexGrp + 1}
+                                  <Text fontWeight="medium" color="gray.900" lineClamp={1}>
+                                    {groupLabel} – {orderModuleFormatted}
                                   </Text>
-                                  <Text fontWeight="medium" color="gray.900">
-                                    {groupLabel}
-                                  </Text>
-                                  {nbrActive > 0 && (
-                                    <Badge bg="#D1ECF1" color="#0C5460" size="sm">
-                                      {nbrActive} actif{nbrActive > 1 ? 's' : ''}
-                                    </Badge>
-                                  )}
                                 </Flex>
-                                <Flex alignItems="center" gap={1} onClick={(e) => e.stopPropagation()}>
+                                <Flex alignItems="center" gap={1} flexShrink={0} ml="auto" onClick={(e) => e.stopPropagation()}>
                                   <Button
                                     variant="ghost"
                                     size="sm"
@@ -371,26 +545,23 @@ export default function OrdonnancementView() {
                           </Accordion.ItemTrigger>
                           <Accordion.ItemContent>
                             <Box pt={4} pb={2} px={4} borderTopWidth="1px" borderColor="gray.100">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                gap={2}
-                                mb={4}
-                                onClick={() => addOption(grpIndex)}
-                              >
-                                <Plus size={14} />
-                                Ajouter une option
-                              </Button>
                               {grp.childreen
                                 .sort((a, b) => (a.ordreOption ?? 0) - (b.ordreOption ?? 0))
-                                .map((opt, indexOpt) => (
-                                  <FormInputRef
-                                    key={indexOpt}
-                                    option={opt}
-                                    onUpdate={(o) => updateOption(grpIndex, indexOpt, o)}
-                                    onDelete={() => deleteOption(grpIndex, indexOpt)}
-                                  />
-                                ))}
+                                .map((opt, indexOpt) => {
+                                  const indexOptInGroup = grp.childreen.findIndex((o) => o === opt);
+                                  const siblingOrdreOptions = grp.childreen
+                                    .filter((o) => o !== opt)
+                                    .map((o) => o.ordreOption ?? 0);
+                                  return (
+                                    <FormInputRef
+                                      key={indexOpt}
+                                      option={opt}
+                                      siblingOrdreOptions={siblingOrdreOptions}
+                                      onUpdate={(o) => updateOption(grpIndex, indexOptInGroup, o)}
+                                      onDelete={() => deleteOption(grpIndex, indexOptInGroup)}
+                                    />
+                                  );
+                                })}
                             </Box>
                           </Accordion.ItemContent>
                         </Box>
@@ -422,6 +593,81 @@ export default function OrdonnancementView() {
           )}
         </Box>
       </Flex>
+
+      {/* Dialog Confirmation remplacement CSV référentiel */}
+      <Dialog.Root open={confirmReplaceImportOpen} onOpenChange={(e) => !e.open && setConfirmReplaceImportOpen(false)}>
+        <Dialog.Backdrop bg="blackAlpha.600" backdropFilter="blur(4px)" />
+        <Dialog.Positioner>
+          <Dialog.Content
+            maxW="420px"
+            borderRadius="xl"
+            boxShadow="xl"
+            bg="white"
+            borderWidth="1px"
+            borderColor="gray.200"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                setConfirmReplaceImportOpen(false);
+                handleImportRaw();
+              }
+            }}
+          >
+            <Dialog.Header borderBottomWidth="1px" borderColor="gray.100" py={4} px={6}>
+              <Dialog.Title fontSize="lg" fontWeight="semibold">
+                Remplacer le fichier CSV
+              </Dialog.Title>
+              <Dialog.CloseTrigger />
+            </Dialog.Header>
+            <Dialog.Body py={6} px={6}>
+              <Text fontSize="sm" color="gray.600">
+                Un référentiel est déjà chargé. Souhaitez-vous l&apos;abandonner et en importer un autre ?
+              </Text>
+              <Flex justifyContent="flex-end" gap={3} mt={5}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  px={4}
+                  py={2}
+                  borderRadius="lg"
+                  borderColor="gray.200"
+                  color="gray.700"
+                  _hover={{ bg: 'gray.50', borderColor: 'gray.300' }}
+                  transition="all 0.2s"
+                  onClick={() => setConfirmReplaceImportOpen(false)}
+                >
+                  Annuler
+                </Button>
+                <Button
+                  size="sm"
+                  px={4}
+                  py={2}
+                  fontWeight="medium"
+                  borderRadius="lg"
+                  bg="#422AFB"
+                  color="white"
+                  boxShadow="0 2px 6px rgba(66, 42, 251, 0.22)"
+                  _hover={{ bg: '#3522d4', boxShadow: '0 3px 10px rgba(66, 42, 251, 0.3)', transform: 'translateY(-1px)' }}
+                  _active={{ transform: 'translateY(0)' }}
+                  transition="all 0.2s"
+                  onClick={async () => {
+                    setConfirmReplaceImportOpen(false);
+                    await handleImportRaw();
+                  }}
+                >
+                  Oui, importer un autre fichier
+                </Button>
+              </Flex>
+            </Dialog.Body>
+          </Dialog.Content>
+        </Dialog.Positioner>
+      </Dialog.Root>
+
+      <OrganigrammeModal
+        isOpen={organigrammeOpen}
+        onClose={() => setOrganigrammeOpen(false)}
+        instances={instances}
+      />
     </Box>
   );
 }

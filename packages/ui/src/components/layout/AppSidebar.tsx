@@ -18,7 +18,7 @@ export default function AppSidebar() {
       left={0}
       top={0}
       bottom={0}
-      w="280px"
+      w="220px"
       bg="#422AFB"
       color="white"
       overflowY="auto"

@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Dialog, Box, Flex, Text } from '@chakra-ui/react';
+import { Dialog, Box, Flex } from '@chakra-ui/react';
 import { X } from 'lucide-react';
 
 interface ChampsModalProps {
@@ -25,19 +25,19 @@ export default function ChampsModal({ isOpen, onClose, title, titleIcon, childre
           overflow="hidden"
           display="flex"
           flexDirection="column"
-          borderRadius="xl"
-          boxShadow="xl"
+          borderRadius="2xl"
+          boxShadow="2xl"
           bg="white"
           borderWidth="1px"
-          borderColor="gray.200"
+          borderColor="gray.100"
         >
           <Dialog.Header
             flexShrink={0}
-            py={4}
+            py={5}
             px={6}
             borderBottomWidth="1px"
             borderColor="gray.100"
-            bg="gray.50"
+            bg="white"
             display="flex"
             alignItems="center"
             justifyContent="space-between"
@@ -58,13 +58,13 @@ export default function ChampsModal({ isOpen, onClose, title, titleIcon, childre
               <Box
                 as="button"
                 p={2}
-                borderRadius="md"
+                borderRadius="lg"
                 color="gray.500"
-                _hover={{ bg: 'gray.200', color: 'gray.800' }}
+                _hover={{ bg: 'gray.100', color: 'gray.800' }}
                 transition="colors 0.2s"
                 aria-label="Fermer"
               >
-                <X size={20} />
+                <X size={20} strokeWidth={2} />
               </Box>
             </Dialog.CloseTrigger>
           </Dialog.Header>

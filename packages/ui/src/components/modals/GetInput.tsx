@@ -32,22 +32,30 @@ function buildGetValue(variable: string, champ: string, option: string): string 
   return `${variable}_${champ}##${option}`;
 }
 
+const inputStyle = {
+  size: 'sm' as const,
+  h: '40px',
+  borderRadius: 'lg',
+  borderColor: 'gray.200',
+  _focus: { borderColor: '#422AFB', boxShadow: '0 0 0 2px rgba(66, 42, 251, 0.15)' },
+  bg: 'white',
+};
+
 export default function GetInput({ nbrOfField, label = 'GET', value, onChange, onBlur }: GetInputProps) {
   const parsed = parseGetValue(value);
+  const labelProps = { fontSize: 'sm' as const, fontWeight: 'medium' as const, color: 'gray.600' as const, mb: 1.5 };
 
   if (nbrOfField === 1) {
     return (
       <Box>
-        <Text fontSize="sm" fontWeight="medium" mb={2}>
-          {label}
-        </Text>
+        <Text {...labelProps}>{label}</Text>
         <Input
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onBlur={onBlur}
           placeholder="Valeur"
-          size="sm"
-          bg={value ? 'green.50' : undefined}
+          {...inputStyle}
+          bg={value ? 'green.50' : 'white'}
         />
       </Box>
     );
@@ -55,27 +63,23 @@ export default function GetInput({ nbrOfField, label = 'GET', value, onChange, o
 
   if (nbrOfField === 2) {
     return (
-      <Box display="flex" flexDirection="column" gap={2}>
+      <Box display="flex" flexDirection="column" gap={4}>
         <Box>
-          <Text fontSize="sm" fontWeight="medium" mb={1}>
-            Nom de la balise
-          </Text>
+          <Text {...labelProps}>Nom de la balise</Text>
           <Input
             value={parsed.variableValue}
             onChange={(e) => onChange(buildGetValue(e.target.value, parsed.champValue, parsed.optionValue))}
             onBlur={onBlur}
-            size="sm"
+            {...inputStyle}
           />
         </Box>
         <Box>
-          <Text fontSize="sm" fontWeight="medium" mb={1}>
-            Nom de variable
-          </Text>
+          <Text {...labelProps}>Nom de variable</Text>
           <Input
             value={parsed.champValue}
             onChange={(e) => onChange(buildGetValue(parsed.variableValue, e.target.value, parsed.optionValue))}
             onBlur={onBlur}
-            size="sm"
+            {...inputStyle}
           />
         </Box>
       </Box>
@@ -83,42 +87,36 @@ export default function GetInput({ nbrOfField, label = 'GET', value, onChange, o
   }
 
   return (
-    <Box display="flex" flexDirection="column" gap={2}>
+    <Box display="flex" flexDirection="column" gap={4}>
       <Box>
-        <Text fontSize="sm" fontWeight="medium" mb={1}>
-          Nom champs
-        </Text>
+        <Text {...labelProps}>Nom champs</Text>
         <Input
           value={parsed.champValue}
           onChange={(e) => onChange(buildGetValue(parsed.variableValue, e.target.value, parsed.optionValue))}
           onBlur={onBlur}
-          size="sm"
           placeholder="champ"
+          {...inputStyle}
         />
       </Box>
       <Box>
-        <Text fontSize="sm" fontWeight="medium" mb={1}>
-          Nom variable
-        </Text>
+        <Text {...labelProps}>Nom variable</Text>
         <Input
           value={parsed.variableValue}
           onChange={(e) => onChange(buildGetValue(e.target.value, parsed.champValue, parsed.optionValue))}
           onBlur={onBlur}
-          size="sm"
           placeholder="VAR_"
+          {...inputStyle}
         />
       </Box>
       <Box>
-        <Text fontSize="sm" fontWeight="medium" mb={1}>
-          Option (4 car.)
-        </Text>
+        <Text {...labelProps}>Option (4 car.)</Text>
         <Input
           value={parsed.optionValue}
           onChange={(e) => onChange(buildGetValue(parsed.variableValue, parsed.champValue, e.target.value.slice(0, 4)))}
           onBlur={onBlur}
-          size="sm"
           fontFamily="mono"
           placeholder="1IPV"
+          {...inputStyle}
         />
       </Box>
     </Box>

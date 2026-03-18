@@ -1,7 +1,7 @@
 /**
  * Validation du format Predecesseur
- * Format attendu : Instance##OrdreModule##OrdreOption##Module
- * Exemple : Inst01##02600##240##PTF
+ * Format attendu : Instance##OrdreModule(5 chiffres)##OrdreOption(5 chiffres)##Module
+ * Exemple : Inst01##02600##00240##PTF
  */
 const PREDECESSEUR_REGEX = /^[^#]+(##[^#]+){3}$/;
 
@@ -16,5 +16,5 @@ export function isValidFormatHashTag(value: string): boolean {
 
 export function showMessageError(value: string): string {
   if (isValidFormat(value)) return '';
-  return 'Format invalide. Attendu : Instance##OrdreModule##OrdreOption##Module (ex: Inst01##02600##240##PTF)';
+  return 'Format invalide. Attendu : Instance##OrdreModule(5ch)##OrdreOption(5ch)##Module (ex: Inst01##02600##00240##PTF)';
 }

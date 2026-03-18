@@ -6,8 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "npm run build && electron .",
-    "web": "npm run dev --prefix packages/ui",
-    "dev": "concurrently \"npm run dev:ui\" \"wait-on http://localhost:5173 && electron .\"",
+    "web": "npm run build:core && npm run dev --prefix packages/ui",
+    "dev": "npm run build:core && concurrently \"npm run dev:ui\" \"wait-on http://localhost:5173 && electron .\"",
     "dev:ui": "npm run dev --prefix packages/ui",
     "dev:electron": "electron .",
     "build": "npm run build --prefix packages/core && npm run build --prefix packages/ui",
