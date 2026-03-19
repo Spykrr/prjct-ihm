@@ -1,5 +1,4 @@
 import { Box, Input, Text } from '@chakra-ui/react';
-import InfoTooltipIcon from './InfoTooltipIcon';
 
 interface GetInputProps {
   nbrOfField: 1 | 2 | 3;
@@ -7,10 +6,6 @@ interface GetInputProps {
   value: string;
   onChange: (value: string) => void;
   onBlur?: () => void;
-  /** Texte d'aide tooltip (calculé côté parent) */
-  infoMessage?: string;
-  /** Active/désactive l'affichage de l'icône Info et du tooltip */
-  showTooltip?: boolean;
 }
 
 /** Parse VAR_champ##1IPV → { variableValue, champValue, optionValue } */
@@ -42,40 +37,25 @@ const inputStyle = {
   h: '40px',
   borderRadius: 'lg',
   borderColor: 'gray.200',
-  _focus: { borderColor: '#422AFB', boxShadow: '0 0 0 2px rgba(66, 42, 251, 0.15)' },
+  _focus: { borderColor: '#5D2AD0', boxShadow: '0 0 0 2px rgba(93, 42, 208, 0.15)' },
   bg: 'white',
 };
 
-export default function GetInput({
-  nbrOfField,
-  label = 'GET',
-  value,
-  onChange,
-  onBlur,
-  infoMessage = '',
-  showTooltip = true,
-}: GetInputProps) {
+export default function GetInput({ nbrOfField, label = 'GET', value, onChange, onBlur }: GetInputProps) {
   const parsed = parseGetValue(value);
   const labelProps = { fontSize: 'sm' as const, fontWeight: 'medium' as const, color: 'gray.600' as const, mb: 1.5 };
 
   if (nbrOfField === 1) {
     return (
       <Box>
-        {label?.trim() ? (
-          <Box display="flex" alignItems="center" gap={2} mb={1.5}>
-            <Text {...labelProps} mb={0}>
-              {label}
-            </Text>
-            <InfoTooltipIcon message={infoMessage} showTooltip={showTooltip} />
-          </Box>
-        ) : null}
+        <Text {...labelProps}>{label}</Text>
         <Input
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onBlur={onBlur}
           placeholder="Valeur"
           {...inputStyle}
-          bg={value ? 'green.50' : 'white'}
+          bg={value ? 'blue.50' : 'white'}
         />
       </Box>
     );
@@ -129,12 +109,7 @@ export default function GetInput({
         />
       </Box>
       <Box>
-        <Box display="flex" alignItems="center" gap={2}>
-          <Text {...labelProps} mb={0}>
-            Option (4 car.)
-          </Text>
-          <InfoTooltipIcon message={infoMessage} showTooltip={showTooltip} />
-        </Box>
+        <Text {...labelProps}>Option (4 car.)</Text>
         <Input
           value={parsed.optionValue}
           onChange={(e) => onChange(buildGetValue(parsed.variableValue, parsed.champValue, e.target.value.slice(0, 4)))}

@@ -106,9 +106,21 @@ function getOrdreDansGroupe(row: Record<string, string>): number {
   return isNaN(n) ? 0 : n;
 }
 
-/** Valeur pour Predecesseur (Predecesseur, Predecessor ou clé contenant predecesseur). */
+/** Normalise une chaîne pour recherche sans accents (ex. "Prédécesseur" → "predecesseur"). */
+function normalizeNoAccents(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase();
+}
+
+/** Valeur pour Predecesseur (Predecesseur, Predecessor, Prédécesseur ou clé contenant predecesseur). */
 function getPredecesseur(row: Record<string, string>): string {
-  const v = findValueByKeyPattern(row as Record<string, unknown>, ['predecesseur', 'predecessor']);
+  let v = findValueByKeyPattern(row as Record<string, unknown>, ['predecesseur', 'predecessor']);
+  if (v == null || String(v).trim() === '') {
+    const key = Object.keys(row).find((k) => normalizeNoAccents(k).includes('predecesseur'));
+    if (key) v = row[key];
+  }
   return (v != null && String(v).trim() !== '') ? String(v).trim() : '';
 }
 

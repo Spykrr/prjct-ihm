@@ -5,8 +5,8 @@ import {
   Text,
   Button,
   Accordion,
-  Menu,
   Dialog,
+  Switch,
 } from '@chakra-ui/react';
 import { Upload, Download, Plus, Trash2, FolderOpen, ChevronUp, ChevronDown, ChevronRight, Network } from 'lucide-react';
 import {
@@ -235,10 +235,16 @@ export default function OrdonnancementView() {
       : groups;
 
   return (
-    <Box minH="100vh" display="flex" flexDirection="column" bg="#F8F8F8">
-      <Box as="header" bg="white" borderBottomWidth="1px" borderColor="gray.200">
-        <Flex alignItems="center" justifyContent="space-between" px={6} py={3}>
-          <Text fontSize="xl" fontWeight="bold" color="gray.900">
+    <Box minH="100vh" display="flex" flexDirection="column" bg="gray.50">
+      <Box
+        as="header"
+        bg="white"
+        borderBottomWidth="1px"
+        borderColor="gray.200"
+        boxShadow="0 1px 3px rgba(0,0,0,0.04)"
+      >
+        <Flex alignItems="center" justifyContent="space-between" px={6} py={4}>
+          <Text fontSize="xl" fontWeight="bold" color="gray.900" letterSpacing="-0.02em">
             Ordonnancer les tests
           </Text>
           <Flex alignItems="center" gap={4}>
@@ -246,14 +252,14 @@ export default function OrdonnancementView() {
               variant="outline"
               size="sm"
               gap={2}
-              px={3}
-              py={2}
+              px={4}
+              py={2.5}
               fontWeight="medium"
-              borderRadius="lg"
-              borderColor="#422AFB"
-              color="#422AFB"
-              _hover={{ bg: 'rgba(66, 42, 251, 0.08)', borderColor: '#3522d4' }}
-              transition="all 0.2s"
+              borderRadius="xl"
+              borderColor="#5D2AD0"
+              color="#5D2AD0"
+              _hover={{ bg: 'blue.50', borderColor: '#4e23b8' }}
+              transition="all 0.2s ease"
               onClick={handleImport}
             >
               <Upload size={16} />
@@ -262,16 +268,16 @@ export default function OrdonnancementView() {
             <Button
               size="sm"
               gap={2}
-              px={3}
-              py={2}
+              px={4}
+              py={2.5}
               fontWeight="medium"
-              borderRadius="lg"
-              bg="#422AFB"
+              borderRadius="xl"
+              bg="#5D2AD0"
               color="white"
-              boxShadow="0 2px 6px rgba(66, 42, 251, 0.22)"
-              _hover={{ bg: '#3522d4', boxShadow: '0 3px 10px rgba(66, 42, 251, 0.3)', transform: 'translateY(-1px)' }}
+              boxShadow="0 2px 8px rgba(93, 42, 208, 0.25)"
+              _hover={{ bg: '#4e23b8', boxShadow: '0 4px 14px rgba(93, 42, 208, 0.35)', transform: 'translateY(-1px)' }}
               _active={{ transform: 'translateY(0)' }}
-              transition="all 0.2s"
+              transition="all 0.2s ease"
               onClick={handleExport}
               disabled={instances.length === 0}
             >
@@ -304,9 +310,9 @@ export default function OrdonnancementView() {
                   px={4}
                   py={2}
                   borderRadius="lg"
-                  borderColor="gray.200"
-                  color="gray.700"
-                  _hover={{ bg: 'gray.50', borderColor: 'gray.300' }}
+                  borderColor="#5D2AD0"
+                  color="#5D2AD0"
+                  _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
                   transition="all 0.2s"
                   onClick={() => setGroupToDelete(null)}
                 >
@@ -335,74 +341,86 @@ export default function OrdonnancementView() {
       </Dialog.Root>
 
       <Flex flex="1" overflow="hidden">
-        <Box as="aside" w="256px" bg="white" borderRightWidth="1px" borderColor="gray.200" flexShrink={0}>
+        <Box
+          as="aside"
+          w="260px"
+          bg="white"
+          borderRightWidth="1px"
+          borderColor="gray.200"
+          flexShrink={0}
+          boxShadow="2px 0 12px rgba(0,0,0,0.03)"
+        >
           {instances.length > 0 && (
-            <Box p={4} borderBottomWidth="1px">
+            <Box p={4} borderBottomWidth="1px" borderColor="gray.100">
               <Button
                 variant="outline"
                 size="sm"
                 w="full"
                 gap={2}
                 onClick={() => setOrganigrammeOpen(true)}
-                borderColor="gray.300"
-                _hover={{ borderColor: '#422AFB', bg: 'blue.50' }}
+                borderColor="gray.200"
+                borderRadius="xl"
+                _hover={{ borderColor: '#5D2AD0', bg: 'blue.50', color: '#5D2AD0' }}
+                transition="all 0.2s"
               >
                 <Network size={16} />
                 Organigramme
               </Button>
             </Box>
           )}
-          <Box p={4} borderBottomWidth="1px">
-            <Text fontSize="sm" fontWeight="medium" color="gray.600" mb={2}>
+          <Box p={4}>
+            <Text fontSize="xs" fontWeight="semibold" color="gray.500" textTransform="uppercase" letterSpacing="wider" mb={3}>
               Instances
             </Text>
             {instances.length === 0 ? (
-              <Text fontSize="sm" color="gray.500">
+              <Text fontSize="sm" color="gray.500" lineHeight="tall">
                 Importez un CSV pour afficher les instances
               </Text>
             ) : (
               <Box display="flex" flexDirection="column" gap={2}>
-            {instances.map((inst, instIndex) => {
+                {instances.map((inst, instIndex) => {
                   const groupCount = instIndex === 1
                     ? inst.childreen.filter((g) => g.childreen.some((o) => !isOptionActif(o))).length
                     : inst.childreen.length;
-              return (
-                <Box
-                  key={inst.name}
-                  p={3}
-                  bg={currentInstance === inst.name ? '#e8f0fe' : 'white'}
-                  borderWidth="1px"
-                  borderColor={currentInstance === inst.name ? '#422AFB' : 'gray.200'}
-                  borderRadius="lg"
-                  cursor="pointer"
-                  _hover={{ borderColor: 'gray.300' }}
-                  onClick={() => setCurrentInstance(inst.name)}
-                >
-                  <Flex alignItems="center" gap={2}>
-                    <Box flexShrink={0}>
-                      <FolderOpen
-                        size={16}
-                        color={currentInstance === inst.name ? '#422AFB' : '#4b5563'}
-                      />
+                  const isSelected = currentInstance === inst.name;
+                  return (
+                    <Box
+                      key={inst.name}
+                      p={3}
+                      bg={isSelected ? 'blue.50' : 'transparent'}
+                      borderWidth="1px"
+                      borderColor={isSelected ? '#5D2AD0' : 'transparent'}
+                      borderRadius="xl"
+                      cursor="pointer"
+                      _hover={{ bg: isSelected ? 'blue.50' : 'gray.50', borderColor: isSelected ? '#5D2AD0' : 'gray.200' }}
+                      transition="all 0.2s"
+                      onClick={() => setCurrentInstance(inst.name)}
+                    >
+                      <Flex alignItems="center" gap={2}>
+                        <Box flexShrink={0}>
+                          <FolderOpen
+                            size={16}
+                            color={isSelected ? '#5D2AD0' : '#64748b'}
+                          />
+                        </Box>
+                        <Text fontWeight="medium" fontSize="sm" lineClamp={1} color={isSelected ? 'gray.900' : 'gray.700'}>
+                          {inst.name}
+                        </Text>
+                      </Flex>
+                      <Text fontSize="xs" color="gray.500" mt={1}>
+                        {groupCount} groupe(s)
+                      </Text>
                     </Box>
-                    <Text fontWeight="medium" fontSize="sm" lineClamp={1}>
-                      {inst.name}
-                    </Text>
-                  </Flex>
-                  <Text fontSize="xs" color="gray.500" mt={1}>
-                    {groupCount} groupe(s)
-                  </Text>
-                </Box>
-              );
-            })}
+                  );
+                })}
               </Box>
             )}
           </Box>
         </Box>
 
-        <Box as="main" flex="1" overflowY="auto" p={6}>
+        <Box as="main" flex="1" overflowY="auto" p={8}>
           {importError && (
-            <Box mb={4} p={3} bg="red.50" color="red.700" borderRadius="md" fontSize="sm">
+            <Box mb={4} p={4} bg="red.50" color="red.700" borderRadius="xl" fontSize="sm" borderWidth="1px" borderColor="red.200">
               {importError}
             </Box>
           )}
@@ -412,51 +430,67 @@ export default function OrdonnancementView() {
               flexDirection="column"
               alignItems="center"
               justifyContent="center"
-              py={20}
-              color="gray.500"
+              py={24}
+              px={6}
             >
-              <Upload size={48} style={{ marginBottom: 16 }} />
-              <Text fontSize="lg" fontWeight="medium" mb={2}>
+              <Box
+                p={5}
+                borderRadius="2xl"
+                bg="white"
+                borderWidth="1px"
+                borderColor="gray.200"
+                boxShadow="0 4px 20px rgba(0,0,0,0.06)"
+                mb={6}
+              >
+                <Upload size={48} color="#94a3b8" />
+              </Box>
+              <Text fontSize="xl" fontWeight="semibold" color="gray.800" mb={2}>
                 Aucun fichier importé
               </Text>
-              <Text fontSize="sm" mb={4} textAlign="center" maxW="md">
+              <Text fontSize="sm" color="gray.500" mb={6} textAlign="center" maxW="md" lineHeight="tall">
                 Importez un fichier CSV référentiel (séparateur ;) pour gérer l&apos;ordonnancement des tests.
               </Text>
               <Button
                 onClick={handleImport}
-                size="sm"
+                size="md"
                 gap={2}
-                px={4}
-                py={2.5}
-                fontWeight="medium"
-                borderRadius="lg"
-                bg="#422AFB"
+                px={5}
+                py={3}
+                fontWeight="semibold"
+                borderRadius="xl"
+                bg="#5D2AD0"
                 color="white"
-                boxShadow="0 2px 6px rgba(66, 42, 251, 0.22)"
-                _hover={{ bg: '#3522d4', boxShadow: '0 3px 10px rgba(66, 42, 251, 0.3)', transform: 'translateY(-1px)' }}
+                boxShadow="0 4px 14px rgba(93, 42, 208, 0.25)"
+                _hover={{ bg: '#4e23b8', boxShadow: '0 6px 20px rgba(93, 42, 208, 0.35)', transform: 'translateY(-2px)' }}
                 _active={{ transform: 'translateY(0)' }}
-                transition="all 0.2s"
+                transition="all 0.2s ease"
               >
-                <Upload size={16} />
+                <Upload size={18} />
                 Importer un fichier CSV
               </Button>
             </Flex>
           ) : (
             <>
-              <Flex mb={4} alignItems="center" gap={4}>
-                <Text fontSize="2xl" fontWeight="bold" color="gray.900">
+              <Flex mb={6} alignItems="center" gap={6} flexWrap="wrap">
+                <Text fontSize="2xl" fontWeight="bold" color="gray.900" letterSpacing="-0.02em">
                   {currentInstance}
                 </Text>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
+                <Flex alignItems="center" gap={3} cursor="pointer">
+                  <Switch.Root
+                    size="sm"
                     checked={showActiveOnly}
-                    onChange={(e) => setShowActiveOnly(e.target.checked)}
-                  />
+                    onCheckedChange={(e) => setShowActiveOnly(typeof e === 'boolean' ? e : e.checked)}
+                    colorPalette={showActiveOnly ? 'blue' : 'gray'}
+                  >
+                    <Switch.HiddenInput />
+                    <Switch.Control>
+                      <Switch.Thumb />
+                    </Switch.Control>
+                  </Switch.Root>
                   <Text fontSize="sm" color="gray.600">
                     Afficher uniquement les tests actifs
                   </Text>
-                </label>
+                </Flex>
               </Flex>
 
               {/* Liste des groupes - style identique aux écrans (Gérer les tests) */}
@@ -478,26 +512,25 @@ export default function OrdonnancementView() {
                         <Box
                           bg="white"
                           borderWidth="1px"
-                          borderRadius="lg"
+                          borderRadius="2xl"
                           overflow="hidden"
-                          _hover={{ borderColor: 'gray.400' }}
-                          transition="border-color 0.2s"
                           borderColor="gray.200"
+                          boxShadow="0 1px 3px rgba(0,0,0,0.04)"
+                          _hover={{ boxShadow: '0 4px 12px rgba(0,0,0,0.06)', borderColor: 'gray.300' }}
+                          transition="all 0.2s ease"
                         >
                           <Accordion.ItemTrigger asChild>
-                            <Box as="button" w="full" textAlign="left" p={4}>
+                            <Box as="button" w="full" textAlign="left" p={4} _hover={{ bg: 'gray.50' }}>
                               <Flex alignItems="center" justifyContent="space-between" gap={4} w="full">
-                                <Flex alignItems="center" gap={4} flex="1" minW={0}>
-                                  <Box
-                                    as="span"
-                                    display="inline-flex"
-                                    transition="transform 0.2s"
-                                    flexShrink={0}
-                                    transform={isOpen ? 'rotate(90deg)' : 'rotate(0deg)'}
-                                  >
-                                    <ChevronRight size={18} />
+                                <Flex alignItems="center" gap={3} flex="1" minW={0}>
+                                  <Box as="span" display="inline-flex" flexShrink={0}>
+                                    {isOpen ? (
+                                      <ChevronDown size={18} color="var(--chakra-colors-gray-700)" />
+                                    ) : (
+                                      <ChevronRight size={18} color="var(--chakra-colors-gray-700)" />
+                                    )}
                                   </Box>
-                                  <Text fontWeight="medium" color="gray.900" lineClamp={1}>
+                                  <Text fontWeight="bold" color="gray.900" lineClamp={1}>
                                     {groupLabel} – {orderModuleFormatted}
                                   </Text>
                                 </Flex>
@@ -544,7 +577,7 @@ export default function OrdonnancementView() {
                             </Box>
                           </Accordion.ItemTrigger>
                           <Accordion.ItemContent>
-                            <Box pt={4} pb={2} px={4} borderTopWidth="1px" borderColor="gray.100">
+                            <Box pt={4} pb={4} px={4} borderTopWidth="1px" borderColor="gray.100" bg="gray.50">
                               {grp.childreen
                                 .sort((a, b) => (a.ordreOption ?? 0) - (b.ordreOption ?? 0))
                                 .map((opt, indexOpt) => {
@@ -571,21 +604,22 @@ export default function OrdonnancementView() {
                 </Box>
               </Accordion.Root>
 
-              {/* Bouton Ajouter un groupe - style identique à Ajouter écran */}
+              {/* Bouton Ajouter un groupe */}
               <Box
                 as="button"
                 onClick={addGroup}
                 w="full"
-                p={4}
+                p={5}
                 borderWidth="2px"
                 borderStyle="dashed"
                 borderColor="gray.300"
-                borderRadius="lg"
-                _hover={{ borderColor: 'gray.900', bg: 'gray.50' }}
-                transition="all 0.2s"
+                borderRadius="2xl"
+                bg="white"
+                _hover={{ borderColor: '#5D2AD0', bg: 'blue.50', color: '#5D2AD0' }}
+                transition="all 0.2s ease"
               >
-                <Flex alignItems="center" justifyContent="center" gap={2} color="gray.600">
-                  <Plus size={16} />
+                <Flex alignItems="center" justifyContent="center" gap={2} color="gray.500">
+                  <Plus size={18} />
                   <Text fontWeight="medium">Ajouter un groupe</Text>
                 </Flex>
               </Box>
@@ -630,9 +664,9 @@ export default function OrdonnancementView() {
                   px={4}
                   py={2}
                   borderRadius="lg"
-                  borderColor="gray.200"
-                  color="gray.700"
-                  _hover={{ bg: 'gray.50', borderColor: 'gray.300' }}
+                  borderColor="#5D2AD0"
+                  color="#5D2AD0"
+                  _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
                   transition="all 0.2s"
                   onClick={() => setConfirmReplaceImportOpen(false)}
                 >
@@ -644,10 +678,10 @@ export default function OrdonnancementView() {
                   py={2}
                   fontWeight="medium"
                   borderRadius="lg"
-                  bg="#422AFB"
+                  bg="#5D2AD0"
                   color="white"
-                  boxShadow="0 2px 6px rgba(66, 42, 251, 0.22)"
-                  _hover={{ bg: '#3522d4', boxShadow: '0 3px 10px rgba(66, 42, 251, 0.3)', transform: 'translateY(-1px)' }}
+                  boxShadow="0 2px 6px rgba(93, 42, 208, 0.22)"
+                  _hover={{ bg: '#4e23b8', boxShadow: '0 3px 10px rgba(93, 42, 208, 0.3)', transform: 'translateY(-1px)' }}
                   _active={{ transform: 'translateY(0)' }}
                   transition="all 0.2s"
                   onClick={async () => {

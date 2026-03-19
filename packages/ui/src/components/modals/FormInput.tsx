@@ -38,8 +38,8 @@ export default function FormInput({
           h="40px"
           borderRadius="lg"
           borderColor="gray.200"
-          _focus={{ borderColor: '#422AFB', boxShadow: '0 0 0 2px rgba(66, 42, 251, 0.15)' }}
-          bg={label || option ? 'green.50' : 'white'}
+          _focus={{ borderColor: '#5D2AD0', boxShadow: '0 0 0 2px rgba(93, 42, 208, 0.15)' }}
+          bg={label || option ? 'blue.50' : 'white'}
         />
         {showOption && (
           <Input
@@ -53,7 +53,7 @@ export default function FormInput({
             borderColor="gray.200"
             fontFamily="mono"
             title={help ?? undefined}
-            bg={label || option ? 'green.50' : 'white'}
+            bg={label || option ? 'blue.50' : 'white'}
           />
         )}
         {onDelete && (

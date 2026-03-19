@@ -16,7 +16,7 @@ export default function MainLayout() {
   return (
     <Flex minH="100vh" bg="#F8F8F8">
       <AppSidebar />
-      <Box flex="1" display="flex" flexDirection="column" marginLeft="220px">
+      <Box flex="1" display="flex" flexDirection="column" marginLeft="240px">
         <Box flex="1" overflow="auto" position="relative">
           <Box display={isTests ? 'block' : 'none'} height="100%">
             <ScreensView />

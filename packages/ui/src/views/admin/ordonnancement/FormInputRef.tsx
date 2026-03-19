@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Box, Flex, Button, Checkbox, Input, Text, Dialog, Tooltip } from '@chakra-ui/react';
+import { Box, Flex, Button, Checkbox, Input, Text, Dialog, Switch, Badge } from '@chakra-ui/react';
 import { Trash2, Pencil, X, Link2, Settings } from 'lucide-react';
 import { type RefOption } from '@uptest/core';
 import {
@@ -45,6 +45,13 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
   const latestLocalEditRef = useRef<RefOption | null>(null);
   /** Valeur d'ordre groupe à l'ouverture de la popup (pour détecter un changement au moment d'enregistrer) */
   const initialOrdreOptionRef = useRef<number | undefined>(undefined);
+  /** Détails parsés du prédécesseur (mis à jour par effet pour affichage fiable) */
+  const [predecesseurDetails, setPredecesseurDetails] = useState<{
+    instanceName: string;
+    ordreInstance: string;
+    ordreGroupe: string;
+    moduleName: string;
+  }>({ instanceName: '', ordreInstance: '', ordreGroupe: '', moduleName: '' });
 
   const openEditPopup = () => {
     const snapshot = { ...option };
@@ -122,7 +129,9 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
     minHeight: '36px',
   };
 
-  const hasPredecesseur = !!(option.Predecesseur as string | undefined)?.toString().trim();
+  const getPredecesseurValue = (opt: RefOption | null): string =>
+    opt ? String((opt as Record<string, unknown>).Predecesseur ?? (opt as Record<string, unknown>).predecesseur ?? '').trim() : '';
+  const hasPredecesseur = !!getPredecesseurValue(option);
   const hasParams = Array.from({ length: 10 }).some((_, idx) => {
     const key = `Param${idx + 1}` as keyof RefOption;
     const value = option[key];
@@ -149,6 +158,22 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
     }
   }, [popupMode]);
 
+  // Parser le prédécesseur pour afficher les détails (état dédié pour éviter affichage vide)
+  useEffect(() => {
+    if (popupMode !== 'predecesseur' || !localEdit) {
+      setPredecesseurDetails({ instanceName: '', ordreInstance: '', ordreGroupe: '', moduleName: '' });
+      return;
+    }
+    const raw = getPredecesseurValue(localEdit);
+    const parts = raw ? raw.split('##').map((s) => String(s).trim()) : [];
+    setPredecesseurDetails({
+      instanceName: parts[0] ?? '',
+      ordreInstance: parts[1] ?? '',
+      ordreGroupe: parts[2] ?? '',
+      moduleName: parts[3] ?? '',
+    });
+  }, [popupMode, localEdit]);
+
   // Annuler le debounce à la fermeture
   useEffect(() => {
     return () => {
@@ -159,213 +184,139 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
     };
   }, []);
 
+  const isActif = option.Actif === 'O';
+  const moduleLabel = (option.Module as string) || '—';
+  const ordreFormatted = PAD_5(option.ordreOption as number | undefined);
+  const libelleLabel = (option.Libelle as string) || '—';
+
   return (
     <Box
-      p={5}
+      p={4}
       borderWidth="1px"
       borderRadius="xl"
       borderColor="gray.200"
       bg="white"
-      mb={4}
+      mb={3}
       boxShadow="0 1px 3px rgba(0,0,0,0.04)"
+      _hover={{ boxShadow: '0 4px 12px rgba(0,0,0,0.06)', borderColor: 'gray.300' }}
+      transition="all 0.2s ease"
     >
-      <Flex gap={4} alignItems="center" flexWrap="wrap">
-        {/* Actif - case à cocher en lecture seule */}
-        <Flex alignItems="center" gap={2} flexShrink={0}>
-          <FieldLabel>Actif</FieldLabel>
-          <Checkbox.Root
-            checked={option.Actif === 'O'}
+      <Flex gap={4} alignItems="center" flexWrap="nowrap">
+        {/* Gauche : toggle Actif, badge Module */}
+        <Flex alignItems="center" gap={3} flexShrink={0}>
+          <Switch.Root
+            size="sm"
+            checked={isActif}
             disabled
+            colorPalette="blue"
             cursor="default"
-            opacity={1}
           >
-            <Checkbox.HiddenInput />
-            <Checkbox.Control />
-          </Checkbox.Root>
-        </Flex>
-
-        {/* Traitement - lecture seule, style "non modifiable" */}
-        <Flex alignItems="center" gap={2} flexShrink={0} minW="200px">
-          <Text fontSize="xs" fontWeight="medium" color="gray.500" whiteSpace="nowrap">
-            Traitement :
-          </Text>
-          <Flex
-            alignItems="center"
-            gap={2}
-            px={3}
-            py={2}
+            <Switch.HiddenInput />
+            <Switch.Control>
+              <Switch.Thumb />
+            </Switch.Control>
+          </Switch.Root>
+          <Badge
+            bg="#5D2AD0"
+            color="white"
+            px={2.5}
+            py={1}
             borderRadius="lg"
-            borderWidth="1px"
-            borderStyle="dashed"
-            borderColor="gray.400"
-            bg="gray.200"
-            minW="140px"
-            cursor="default"
-            userSelect="none"
+            fontSize="xs"
+            fontWeight="semibold"
+            textTransform="uppercase"
           >
-            <Text fontSize="sm" color="gray.600" lineClamp={1} flex={1} minW={0}>
-              {(option.Module as string) || '—'}
-            </Text>
-          </Flex>
+            {moduleLabel.length > 8 ? moduleLabel.slice(0, 8) : moduleLabel}
+          </Badge>
         </Flex>
 
-        {/* Ordre - lecture seule, style "non modifiable" */}
-        <Flex alignItems="center" gap={2} flexShrink={0} minW="100px">
-          <Text fontSize="xs" fontWeight="medium" color="gray.500" whiteSpace="nowrap">
-            Ordre :
+        {/* Centre : titre = Libellé + ligne secondaire Ordre | Libellé */}
+        <Flex flexDirection="column" gap={0.5} flex={1} minW={0}>
+          <Text fontWeight="bold" color="gray.900" lineClamp={1} fontSize="md" letterSpacing="-0.01em">
+            {libelleLabel}
           </Text>
-          <Flex
-            alignItems="center"
-            gap={2}
-            px={3}
-            py={2}
-            borderRadius="lg"
-            borderWidth="1px"
-            borderStyle="dashed"
-            borderColor="gray.400"
-            bg="gray.200"
-            minW={0}
-            cursor="default"
-            userSelect="none"
-          >
-            <Text fontSize="sm" color="gray.600" lineClamp={1} flex={1} minW={0}>
-              {PAD_5(option.ordreOption as number | undefined)}
-            </Text>
-          </Flex>
-        </Flex>
-
-        {/* Libellé - lecture seule, style "non modifiable" */}
-        <Flex alignItems="center" gap={2} flexShrink={1} minW={0}>
-          <Text fontSize="xs" fontWeight="medium" color="gray.500" whiteSpace="nowrap">
-            Libellé :
+          <Text fontSize="sm" color="gray.500">
+            Ordre : {ordreFormatted} | Libellé: {libelleLabel}
           </Text>
-          <Flex
-            alignItems="center"
-            gap={2}
-            px={3}
-            py={2}
-            borderRadius="lg"
-            borderWidth="1px"
-            borderStyle="dashed"
-            borderColor="gray.400"
-            bg="gray.200"
-            minW={0}
-            maxW="240px"
-            w="240px"
-            overflow="hidden"
-            cursor="default"
-            userSelect="none"
-          >
-            <Tooltip.Root openDelay={150} closeDelay={50}>
-              <Tooltip.Trigger asChild>
-                <Text
-                  fontSize="sm"
-                  color="gray.600"
-                  lineClamp={1}
-                  flex={1}
-                  minW={0}
-                  whiteSpace="nowrap"
-                  overflow="hidden"
-                  textOverflow="ellipsis"
-                >
-                  {(option.Libelle as string) || '—'}
-                </Text>
-              </Tooltip.Trigger>
-              <Tooltip.Positioner>
-                <Tooltip.Content
-                  maxW="420px"
-                  fontSize="sm"
-                  bg="gray.900"
-                  color="white"
-                  px={3}
-                  py={2}
-                  borderRadius="md"
-                  boxShadow="lg"
-                >
-                  <Tooltip.Arrow bg="gray.900" />
-                  {(option.Libelle as string) || '—'}
-                </Tooltip.Content>
-              </Tooltip.Positioner>
-            </Tooltip.Root>
-          </Flex>
         </Flex>
 
-        {/* Boutons d'action alignés à droite */}
+        {/* Boutons d'action */}
         <Flex alignItems="center" gap={1} ml="auto">
-          {/* Prédécesseur */}
           <Button
             size="sm"
             variant="ghost"
             flexShrink={0}
             p={2}
             h="36px"
-            minW="auto"
-            borderRadius="lg"
-            bg={hasPredecesseur ? '#dcfce7' : 'transparent'}
-            color={hasPredecesseur ? '#166534' : 'gray.500'}
+            w="36px"
+            minW="36px"
+            borderRadius="xl"
+            bg={hasPredecesseur ? 'green.50' : 'transparent'}
+            color={hasPredecesseur ? 'green.700' : 'gray.500'}
             _hover={{
-              bg: hasPredecesseur ? '#bbf7d0' : 'gray.100',
-              color: hasPredecesseur ? '#166534' : '#422AFB',
+              bg: hasPredecesseur ? 'green.100' : 'gray.100',
+              color: hasPredecesseur ? 'green.700' : '#5D2AD0',
             }}
+            transition="all 0.2s"
             title="Prédécesseur"
             onClick={openPredecesseurPopup}
           >
             <Link2 size={18} strokeWidth={2} />
           </Button>
-
-          {/* Paramètres */}
           <Button
             size="sm"
             variant="ghost"
             flexShrink={0}
             p={2}
             h="36px"
-            minW="auto"
-            borderRadius="lg"
-            bg={hasParams ? '#dbeafe' : 'transparent'}
-            color={hasParams ? '#1d4ed8' : 'gray.500'}
+            w="36px"
+            minW="36px"
+            borderRadius="xl"
+            bg={hasParams ? 'blue.50' : 'transparent'}
+            color={hasParams ? 'blue.700' : 'gray.500'}
             _hover={{
-              bg: hasParams ? '#bfdbfe' : 'gray.100',
-              color: hasParams ? '#1d4ed8' : '#422AFB',
+              bg: hasParams ? 'blue.100' : 'gray.100',
+              color: hasParams ? 'blue.700' : '#5D2AD0',
             }}
+            transition="all 0.2s"
             title="Paramètres"
             onClick={openParametresPopup}
           >
             <Settings size={18} strokeWidth={2} />
           </Button>
-
-          {/* Bouton crayon : ouvrir la popup pour modifier */}
           <Button
             size="sm"
             variant="ghost"
             flexShrink={0}
             p={2}
             h="36px"
-            minW="auto"
-            borderRadius="lg"
-            bg={hasGeneralInfo ? '#fef9c3' : 'transparent'}
-            color={hasGeneralInfo ? '#92400e' : 'gray.500'}
+            w="36px"
+            minW="36px"
+            borderRadius="xl"
+            bg={hasGeneralInfo ? 'yellow.50' : 'transparent'}
+            color={hasGeneralInfo ? 'yellow.800' : 'gray.500'}
             _hover={{
-              bg: hasGeneralInfo ? '#fef08a' : 'gray.100',
-              color: hasGeneralInfo ? '#92400e' : '#422AFB',
+              bg: hasGeneralInfo ? 'yellow.100' : 'gray.100',
+              color: hasGeneralInfo ? 'yellow.800' : '#5D2AD0',
             }}
+            transition="all 0.2s"
             onClick={openEditPopup}
             title="Modifier tous les champs"
           >
             <Pencil size={18} strokeWidth={2} />
           </Button>
-
-          {/* Supprimer */}
           <Button
             size="sm"
             variant="ghost"
             color="gray.500"
             p={2}
-            minW="auto"
             h="36px"
-            borderRadius="lg"
+            w="36px"
+            minW="36px"
+            borderRadius="xl"
             flexShrink={0}
             _hover={{ bg: 'red.50', color: 'red.500' }}
+            transition="all 0.2s"
             onClick={() => setConfirmDeleteOpen(true)}
             title="Supprimer cette option"
           >
@@ -409,7 +360,7 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
                   p={2}
                   borderRadius="lg"
                   bg="blue.50"
-                  color="#422AFB"
+                  color="#5D2AD0"
                   display="flex"
                   alignItems="center"
                   justifyContent="center"
@@ -583,46 +534,41 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
                 </Box>
               )}
 
-              {localEdit && popupMode === 'predecesseur' && (() => {
-                const raw = (localEdit.Predecesseur as string) ?? '';
-                const parts = raw.split('##').map((s) => s.trim());
-                const [instanceName, ordreInstance, ordreGroupe, module] = parts;
-                return (
-                  <Box>
-                    <FieldLabel>Prédécesseur</FieldLabel>
-                    <Input
-                      size="sm"
-                      h="36px"
-                      borderRadius="lg"
-                      value={raw}
-                      onChange={(e) => updateLocal('Predecesseur', e.target.value)}
-                      placeholder="Inst01##02600##00240##PTF"
-                    />
-                    <Text fontSize="xs" color="gray.500" mt={1}>
-                      Format&nbsp;: Instance##OrdreInstance##OrdreGroupe##Module
+              {localEdit && popupMode === 'predecesseur' && (
+                <Box>
+                  <FieldLabel>Prédécesseur</FieldLabel>
+                  <Input
+                    size="sm"
+                    h="36px"
+                    borderRadius="lg"
+                    value={getPredecesseurValue(localEdit)}
+                    onChange={(e) => updateLocal('Predecesseur', e.target.value)}
+                    placeholder="Inst01##02600##00240##PTF"
+                  />
+                  <Text fontSize="xs" color="gray.500" mt={1}>
+                    Format&nbsp;: Instance##OrdreInstance##OrdreGroupe##Module
+                  </Text>
+                  <Box mt={4} p={3} borderRadius="lg" borderWidth="1px" borderColor="gray.200" bg="gray.50">
+                    <Text fontSize="xs" fontWeight="semibold" color="gray.600" mb={2}>
+                      Détails du prédécesseur
                     </Text>
-                    <Box mt={4} p={3} borderRadius="lg" borderWidth="1px" borderColor="gray.200" bg="gray.50">
-                      <Text fontSize="xs" fontWeight="semibold" color="gray.600" mb={2}>
-                        Détails du prédécesseur
+                    <Flex direction="column" gap={1.5}>
+                      <Text fontSize="sm" color="gray.700">
+                        Nom de l&apos;instance&nbsp;: {predecesseurDetails.instanceName || '—'}
                       </Text>
-                      <Flex direction="column" gap={1.5}>
-                        <Text fontSize="sm" color="gray.700">
-                          Nom de l&apos;instance&nbsp;: {instanceName ?? '—'}
-                        </Text>
-                        <Text fontSize="sm" color="gray.700">
-                          Ordre de l&apos;instance&nbsp;: {ordreInstance ?? '—'}
-                        </Text>
-                        <Text fontSize="sm" color="gray.700">
-                          Ordre dans groupe&nbsp;: {ordreGroupe ?? '—'}
-                        </Text>
-                        <Text fontSize="sm" color="gray.700">
-                          Module&nbsp;: {module ?? '—'}
-                        </Text>
-                      </Flex>
-                    </Box>
+                      <Text fontSize="sm" color="gray.700">
+                        Ordre de l&apos;instance&nbsp;: {predecesseurDetails.ordreInstance || '—'}
+                      </Text>
+                      <Text fontSize="sm" color="gray.700">
+                        Ordre dans groupe&nbsp;: {predecesseurDetails.ordreGroupe || '—'}
+                      </Text>
+                      <Text fontSize="sm" color="gray.700">
+                        Module&nbsp;: {predecesseurDetails.moduleName || '—'}
+                      </Text>
+                    </Flex>
                   </Box>
-                );
-              })()}
+                </Box>
+              )}
 
               {localEdit && popupMode === 'parametres' && (
                 <Box>
@@ -691,9 +637,9 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
                 py={2.5}
                 fontWeight="medium"
                 borderRadius="xl"
-                borderColor="gray.200"
-                color="gray.700"
-                _hover={{ bg: 'gray.50', borderColor: 'gray.300' }}
+                borderColor="#5D2AD0"
+                color="#5D2AD0"
+                _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
                 transition="all 0.2s"
                 onClick={closeEditPopup}
               >
@@ -705,10 +651,10 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
                 py={2.5}
                 fontWeight="medium"
                 borderRadius="xl"
-                bg="#422AFB"
+                bg="#5D2AD0"
                 color="white"
-                boxShadow="0 2px 8px rgba(66, 42, 251, 0.25)"
-                _hover={{ bg: '#3522d4', boxShadow: '0 4px 14px rgba(66, 42, 251, 0.35)', transform: 'translateY(-1px)' }}
+                boxShadow="0 2px 8px rgba(93, 42, 208, 0.25)"
+                _hover={{ bg: '#4e23b8', boxShadow: '0 4px 14px rgba(93, 42, 208, 0.35)', transform: 'translateY(-1px)' }}
                 _active={{ transform: 'translateY(0)' }}
                 transition="all 0.2s"
                 onClick={saveEditPopup}
@@ -764,9 +710,9 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
                 py={2}
                 fontWeight="medium"
                 borderRadius="lg"
-                borderColor="gray.200"
-                color="gray.700"
-                _hover={{ bg: 'gray.50', borderColor: 'gray.300' }}
+                borderColor="#5D2AD0"
+                color="#5D2AD0"
+                _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
                 transition="all 0.2s"
                 onClick={() => setConfirmOrdreMergeOpen(false)}
               >
@@ -778,10 +724,10 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
                 py={2}
                 fontWeight="medium"
                 borderRadius="lg"
-                bg="#422AFB"
+                bg="#5D2AD0"
                 color="white"
-                boxShadow="0 2px 6px rgba(66, 42, 251, 0.25)"
-                _hover={{ bg: '#3522d4', boxShadow: '0 3px 10px rgba(66, 42, 251, 0.3)', transform: 'translateY(-1px)' }}
+                boxShadow="0 2px 6px rgba(93, 42, 208, 0.25)"
+                _hover={{ bg: '#4e23b8', boxShadow: '0 3px 10px rgba(93, 42, 208, 0.3)', transform: 'translateY(-1px)' }}
                 _active={{ transform: 'translateY(0)' }}
                 transition="all 0.2s"
                 onClick={confirmOrdreMergeAndSave}
@@ -838,9 +784,9 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
                 py={2}
                 fontWeight="medium"
                 borderRadius="lg"
-                borderColor="gray.200"
-                color="gray.700"
-                _hover={{ bg: 'gray.50', borderColor: 'gray.300' }}
+                borderColor="#5D2AD0"
+                color="#5D2AD0"
+                _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
                 transition="all 0.2s"
                 onClick={() => setConfirmDeleteOpen(false)}
               >

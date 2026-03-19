@@ -37,7 +37,7 @@ export default function ChampsModal({ isOpen, onClose, title, titleIcon, childre
             px={6}
             borderBottomWidth="1px"
             borderColor="gray.100"
-            bg="white"
+              bg="gray.50"
             display="flex"
             alignItems="center"
             justifyContent="space-between"
@@ -60,7 +60,7 @@ export default function ChampsModal({ isOpen, onClose, title, titleIcon, childre
                 p={2}
                 borderRadius="lg"
                 color="gray.500"
-                _hover={{ bg: 'gray.100', color: 'gray.800' }}
+                _hover={{ bg: 'rgba(93, 42, 208, 0.08)', color: '#5D2AD0' }}
                 transition="colors 0.2s"
                 aria-label="Fermer"
               >
@@ -68,7 +68,7 @@ export default function ChampsModal({ isOpen, onClose, title, titleIcon, childre
               </Box>
             </Dialog.CloseTrigger>
           </Dialog.Header>
-          <Dialog.Body flex="1" overflowY="auto" py={6} px={6}>
+          <Dialog.Body flex="1" overflowY="auto" py={6} px={6} bg="gray.50">
             {children}
           </Dialog.Body>
         </Dialog.Content>

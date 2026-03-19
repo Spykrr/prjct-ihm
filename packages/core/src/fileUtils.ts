@@ -20,44 +20,11 @@ export interface SheetRow {
   '${ecran}'?: string;
   '${msgKOPrevu}'?: string;
   '${get}'?: string;
-  [key: string]: string | undefined | Record<string, string>;
-  /** Commentaires Excel (notes) par clé standard (ex. ${champ01}) */
-  __comments?: Record<string, string>;
+  [key: string]: string | undefined;
 }
 
 function getTestCasesId(type: RowType, index: number): string {
   return `${type}-Ligne${index + 1}`;
-}
-
-function wrapComment(text: string, maxLineLen = 52, maxTotalLen = 800): string {
-  const cleaned = (text ?? '')
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .trim()
-    .slice(0, maxTotalLen);
-  if (!cleaned) return '';
-  const lines: string[] = [];
-  for (const rawLine of cleaned.split('\n')) {
-    const words = rawLine.split(/\s+/).filter(Boolean);
-    if (words.length === 0) {
-      lines.push('');
-      continue;
-    }
-    let cur = '';
-    for (const w of words) {
-      if (!cur) {
-        cur = w;
-        continue;
-      }
-      if ((cur.length + 1 + w.length) <= maxLineLen) cur += ' ' + w;
-      else {
-        lines.push(cur);
-        cur = w;
-      }
-    }
-    if (cur) lines.push(cur);
-  }
-  return lines.join('\n').trim();
 }
 
 export function generateWorksheetFromData(
@@ -79,38 +46,16 @@ export function generateWorksheetFromData(
       row['${get}'],
     ];
     for (let i = 1; i <= 15; i++) {
-      r.push(row[`\${champ${i.toString().padStart(2, '0')}}`] as string | undefined);
+      r.push(row[`\${champ${i.toString().padStart(2, '0')}}`]);
     }
     for (let i = 1; i <= 10; i++) {
-      r.push(row[`\${bouton${i.toString().padStart(2, '0')}}`] as string | undefined);
+      r.push(row[`\${bouton${i.toString().padStart(2, '0')}}`]);
     }
     wsData.push(r);
   });
 
   const ws = XLSX.utils.aoa_to_sheet(wsData);
   ws['!cols'] = COLUMN_KEYS.map(() => ({ wch: 15 }));
-
-  // Réinjecte les commentaires Excel (notes) sur les cellules, si fournis.
-  // Les commentaires sont portés par row.__comments[stdKey] où stdKey est une clé de COLUMN_KEYS.
-  rows.forEach((row, idx) => {
-    const comments = row.__comments ?? {};
-    const excelRow0 = idx + 1; // 0 = header
-    for (const [stdKey, comment] of Object.entries(comments)) {
-      const formatted = wrapComment(comment);
-      if (!formatted) continue;
-      const colIdx = COLUMN_KEYS.indexOf(stdKey);
-      if (colIdx < 0) continue;
-      const addr = XLSX.utils.encode_cell({ r: excelRow0, c: colIdx });
-      // Le format supporté par SheetJS CE pour écrire des "notes" Excel :
-      // cell.c = [{ a: 'Author', t: 'Text' }]
-      // IMPORTANT: si la cellule n'existe pas (valeur vide), il faut créer un stub.
-      const cell = (ws[addr] ?? (ws[addr] = { t: 'z' } as XLSX.CellObject)) as XLSX.CellObject & {
-        c?: Array<{ t?: string; a?: string; T?: boolean }>;
-      };
-      cell.c = [{ a: 'Uptest', t: formatted }];
-    }
-  });
-
   return ws;
 }
 
@@ -118,7 +63,7 @@ export function generateExcel(rows: SheetRow[], sheetName: string): ArrayBuffer 
   const wb = XLSX.utils.book_new();
   const ws = generateWorksheetFromData(rows, sheetName);
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  return XLSX.write(wb, { type: 'array', bookType: 'xlsx', cellComments: true } as any) as ArrayBuffer;
+  return XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
 }
 
 export interface RefGroup {
@@ -241,8 +186,6 @@ export interface ParsedScreen {
   hasGet: boolean;
   hasMsg: boolean;
   rawRow: Record<string, unknown>;
-  /** Commentaires Excel (notes) par clé normalisée (ex. ${champ01}) */
-  comments?: Record<string, string>;
 }
 
 export interface ParsedWorkbook {
@@ -264,7 +207,7 @@ export function parseExcel(
   fileName: string,
   options?: { mode?: ExtractMode; testId?: string }
 ): ParsedWorkbook {
-  const workbook = XLSX.read(buffer, { type: 'array', cellComments: true } as any);
+  const workbook = XLSX.read(buffer, { type: 'array' });
   const sheets: Record<string, SheetRow[]> = {};
   const screensBySheet: Record<string, ParsedScreen[]> = {};
   const testIdsBySheet: Record<string, string[]> = {};
@@ -276,41 +219,6 @@ export function parseExcel(
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' }) as SheetRow[];
 
     sheets[sheetName] = rows;
-
-    // Mappe les clés standard -> index de colonne Excel (0-based) à partir de la 1ère ligne (en-têtes).
-    const headerByCol: string[] = [];
-    let headerRow0Based = 0;
-    const ref = sheet['!ref'];
-    if (ref) {
-      const range = XLSX.utils.decode_range(ref);
-      const headerRow = range.s.r; // première ligne (souvent 0)
-      headerRow0Based = headerRow;
-      for (let c = range.s.c; c <= range.e.c; c++) {
-        const addr = XLSX.utils.encode_cell({ r: headerRow, c });
-        const cell = sheet[addr];
-        const text = cell?.v != null ? String(cell.v).trim() : '';
-        headerByCol[c] = text;
-      }
-    }
-    const findColIndexForStdKey = (stdKey: string): number | undefined => {
-      const target = stdKey.toLowerCase();
-      for (let c = 0; c < headerByCol.length; c++) {
-        const h = (headerByCol[c] ?? '').toString().toLowerCase();
-        if (!h) continue;
-        // match flexible : contient champ01 / bouton01 / ${get} / etc.
-        const cleaned = h.replace(/\s+/g, '');
-        const cleanedTarget = target.replace(/\s+/g, '');
-        if (cleaned === cleanedTarget) return c;
-        if (cleaned.includes(cleanedTarget.replace(/[${}]/g, ''))) return c;
-        if (cleaned.includes(cleanedTarget)) return c;
-      }
-      return undefined;
-    };
-    const stdKeyToColIndex: Record<string, number> = {};
-    for (const k of COLUMN_KEYS) {
-      const col = findColIndexForStdKey(k);
-      if (col != null) stdKeyToColIndex[k] = col;
-    }
 
     const idVal = (r: Record<string, unknown>) =>
       findValueByKeyPattern(r, ['${id}', 'id']) ?? r['${id}'];
@@ -326,56 +234,23 @@ export function parseExcel(
 
     testIdsBySheet[sheetName] = testIds;
 
-    const filteredRowsWithIndex =
+    const filteredRows =
       mode === 'test' && testId
-        ? rows
-            .map((r, rowIndex) => ({ r, rowIndex }))
-            .filter(({ r }) => {
-              const r2 = r as Record<string, unknown>;
-              return (
-                String(typeVal(r2) || '').toUpperCase() === 'TEST' &&
-                String(idVal(r2) || '').trim() === testId.trim()
-              );
-            })
-        : rows
-            .map((r, rowIndex) => ({ r, rowIndex }))
-            .filter(({ r }) => {
-              const type = typeVal(r as Record<string, unknown>);
-              return String(type || '').toUpperCase() === 'INIT';
-            });
+        ? rows.filter((r) => {
+            const r2 = r as Record<string, unknown>;
+            return (
+              String(typeVal(r2) || '').toUpperCase() === 'TEST' &&
+              String(idVal(r2) || '').trim() === testId.trim()
+            );
+          })
+        : rows.filter((r) => {
+            const type = typeVal(r as Record<string, unknown>);
+            return String(type || '').toUpperCase() === 'INIT';
+          });
 
-    const screens: ParsedScreen[] = filteredRowsWithIndex.map(({ r: row, rowIndex }, idx) => {
+    const screens: ParsedScreen[] = filteredRows.map((row, idx) => {
       const r = row as Record<string, unknown>;
       const normalized = normalizeRowKeys(r);
-      // Récupère les commentaires Excel (notes) pour cette ligne
-      const comments: Record<string, string> = {};
-
-      // sheet_to_json commence après la ligne d'en-tête → +1 au-dessus de la première ligne de données
-      // (headerRow0Based = première ligne d'en-têtes, puis les données commencent à headerRow0Based + 1).
-      const excelRow0Based = headerRow0Based + 1 + rowIndex;
-
-      const extractCellComment = (cell: any): string => {
-        const cArr = cell?.c;
-        if (!Array.isArray(cArr) || cArr.length === 0) return '';
-        // On prend la première valeur non vide (le libellé exact dépend de comment Excel est sérialisé par SheetJS).
-        for (const item of cArr) {
-          const t = item?.t != null ? String(item.t).trim() : '';
-          const v = item?.v != null ? String(item.v).trim() : '';
-          const T = item?.T != null ? String(item.T).trim() : '';
-          const text = t || v || T;
-          if (text) return text;
-        }
-        return '';
-      };
-
-      for (const stdKey of COLUMN_KEYS) {
-        const colIdx = stdKeyToColIndex[stdKey];
-        if (colIdx == null) continue;
-        const addr = XLSX.utils.encode_cell({ r: excelRow0Based, c: colIdx });
-        const cell = sheet[addr] as any | undefined;
-        const comment = extractCellComment(cell);
-        if (comment) comments[stdKey] = comment;
-      }
       const ecran = findValueByKeyPattern(r, ['${ecran}', 'ecran']) ?? r['${ecran}'] ?? `Écran ${idx + 1}`;
       const title = typeof ecran === 'string' ? ecran : String(ecran || `Écran ${idx + 1}`);
 
@@ -409,7 +284,6 @@ export function parseExcel(
         hasGet,
         hasMsg,
         rawRow: normalized,
-        comments,
       };
     });
 

@@ -28,22 +28,11 @@ import {
   MousePointerClick,
   MessageSquare,
 } from 'lucide-react';
-import { parseExcel, generateExcel, COLUMN_KEYS, type ParsedScreen, type ParsedWorkbook } from '@uptest/core';
+import { parseExcel, type ParsedScreen, type ParsedWorkbook } from '@uptest/core';
 import { openExcelFile } from '../../../utils/fileImport';
 import { useSidebar } from '../../../contexts/useSidebar';
 import { useToast } from '../../../contexts/ToastContext';
 import ModalContent from './ModalContent';
-import * as XLSX from 'xlsx';
-
-function downloadXlsx(buffer: ArrayBuffer, fileName: string) {
-  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 type Screen = ParsedScreen;
 type TestDisplayNamesMap = Record<string, Record<string, string>>;
@@ -107,71 +96,6 @@ export default function ScreensView() {
   const [renameTestValue, setRenameTestValue] = useState('');
   const [testToDelete, setTestToDelete] = useState<{ sheetName: string; testId: string } | null>(null);
   const [confirmReplaceImportOpen, setConfirmReplaceImportOpen] = useState(false);
-
-  const handleExport = () => {
-    if (!currentSheet || screens.length === 0) return;
-    if (!importBuffer) return;
-
-    // Partir du fichier d'origine pour conserver le rendu Excel (notes, etc.)
-    const wb = XLSX.read(importBuffer.buffer, { type: 'array', cellComments: true } as any);
-    const ws = wb.Sheets[currentSheet];
-    if (!ws) return;
-
-    // Map colonne (index) via la ligne d'en-têtes (1ère ligne)
-    const ref = ws['!ref'] as string | undefined;
-    if (!ref) return;
-    const range = XLSX.utils.decode_range(ref);
-    const headerRow = range.s.r;
-    const headerByCol: string[] = [];
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const addr = XLSX.utils.encode_cell({ r: headerRow, c });
-      const cell = ws[addr] as XLSX.CellObject | undefined;
-      headerByCol[c] = cell?.v != null ? String(cell.v).trim() : '';
-    }
-    const findColIndexForStdKey = (stdKey: string): number | undefined => {
-      const target = stdKey.toLowerCase().replace(/\s+/g, '');
-      for (let c = 0; c < headerByCol.length; c++) {
-        const h = (headerByCol[c] ?? '').toString().toLowerCase().replace(/\s+/g, '');
-        if (!h) continue;
-        if (h === target) return c;
-        const t2 = target.replace(/[${}]/g, '');
-        if (t2 && h.includes(t2)) return c;
-      }
-      return undefined;
-    };
-    const stdKeyToCol: Record<string, number> = {};
-    for (const k of COLUMN_KEYS) {
-      const col = findColIndexForStdKey(k);
-      if (col != null) stdKeyToCol[k] = col;
-    }
-
-    // Ecrit les valeurs + notes sur les lignes (2..)
-    screens.forEach((screen, idx) => {
-      const excelRow0 = headerRow + 1 + idx; // ligne juste sous header
-      for (const stdKey of COLUMN_KEYS) {
-        const colIdx = stdKeyToCol[stdKey];
-        if (colIdx == null) continue;
-        const addr = XLSX.utils.encode_cell({ r: excelRow0, c: colIdx });
-        const val = (screen.rawRow as Record<string, unknown>)[stdKey];
-        const cell = (ws[addr] ?? (ws[addr] = { t: 'z' } as XLSX.CellObject)) as XLSX.CellObject & { c?: any[] };
-        cell.t = 's';
-        cell.v = val == null ? '' : String(val);
-        // Notes
-        const comment = (screen.comments ?? {})[stdKey];
-        if (comment && comment.trim()) {
-          cell.c = [{ a: 'Uptest', t: comment.trim() }];
-        } else if (cell.c) {
-          delete cell.c;
-        }
-        ws[addr] = cell;
-      }
-    });
-
-    const out = XLSX.write(wb, { type: 'array', bookType: 'xlsx', cellComments: true } as any) as ArrayBuffer;
-    const base = importBuffer.fileName?.replace(/\.xlsx$/i, '') ?? 'uptest';
-    downloadXlsx(out, `${base}.xlsx`);
-    showSuccess('Fichier Excel téléchargé');
-  };
 
   const effectiveExtractMode = isDefinition ? 'init' : extractMode;
   const resolvedTestIdForExtract = useMemo(() => {
@@ -647,9 +571,9 @@ export default function ScreensView() {
               py={2}
               fontWeight="medium"
               borderRadius="lg"
-              borderColor="#422AFB"
-              color="#422AFB"
-              _hover={{ bg: 'rgba(66, 42, 251, 0.08)', borderColor: '#3522d4' }}
+              borderColor="#5D2AD0"
+              color="#5D2AD0"
+              _hover={{ bg: 'rgba(93, 42, 208, 0.08)', borderColor: '#4e23b8' }}
               transition="all 0.2s"
               onClick={handleImport}
             >
@@ -663,13 +587,12 @@ export default function ScreensView() {
               py={2}
               fontWeight="medium"
               borderRadius="lg"
-              bg="#422AFB"
+              bg="#5D2AD0"
               color="white"
-              boxShadow="0 2px 6px rgba(66, 42, 251, 0.22)"
-              _hover={{ bg: '#3522d4', boxShadow: '0 3px 10px rgba(66, 42, 251, 0.3)', transform: 'translateY(-1px)' }}
+              boxShadow="0 2px 6px rgba(93, 42, 208, 0.22)"
+              _hover={{ bg: '#4e23b8', boxShadow: '0 3px 10px rgba(93, 42, 208, 0.3)', transform: 'translateY(-1px)' }}
               _active={{ transform: 'translateY(0)' }}
               transition="all 0.2s"
-              onClick={handleExport}
             >
               <Download size={16} />
               Sauvegarder
@@ -699,7 +622,7 @@ export default function ScreensView() {
                     p={3}
                     bg={currentSheet === sheetName ? '#e8f0fe' : 'white'}
                     borderWidth="1px"
-                    borderColor={currentSheet === sheetName ? '#422AFB' : 'gray.200'}
+                    borderColor={currentSheet === sheetName ? '#5D2AD0' : 'gray.200'}
                     borderRadius="lg"
                     cursor="pointer"
                     _hover={{ borderColor: 'gray.300' }}
@@ -720,7 +643,7 @@ export default function ScreensView() {
                           }}
                           display="inline-flex"
                           flexShrink={0}
-                          color={currentSheet === sheetName ? '#422AFB' : '#4b5563'}
+                          color={currentSheet === sheetName ? '#5D2AD0' : '#4b5563'}
                           cursor="pointer"
                           _hover={{ opacity: 0.8 }}
                         >
@@ -730,7 +653,7 @@ export default function ScreensView() {
                             <ChevronRight size={16} />
                           )}
                         </Box>
-                        <Box flexShrink={0}><FolderOpen size={16} color={currentSheet === sheetName ? '#422AFB' : '#4b5563'} /></Box>
+                        <Box flexShrink={0}><FolderOpen size={16} color={currentSheet === sheetName ? '#5D2AD0' : '#4b5563'} /></Box>
                         <Text fontWeight="medium" fontSize="sm" truncate>
                           {sheetDisplayNames[sheetName] ?? sheetName}
                         </Text>
@@ -754,7 +677,7 @@ export default function ScreensView() {
                           borderRadius="md"
                           cursor="pointer"
                           bg={currentSheet === sheetName && selectedNode === node ? '#ede9fe' : 'transparent'}
-                          color={currentSheet === sheetName && selectedNode === node ? '#422AFB' : 'gray.700'}
+                          color={currentSheet === sheetName && selectedNode === node ? '#5D2AD0' : 'gray.700'}
                           _hover={{ bg: currentSheet === sheetName && selectedNode === node ? '#ede9fe' : 'gray.100' }}
                           onClick={() => {
                             if (currentSheet !== sheetName) handleSelectSheet(sheetName);
@@ -909,10 +832,10 @@ export default function ScreensView() {
                 py={2.5}
                 fontWeight="medium"
                 borderRadius="lg"
-                bg="#422AFB"
+                bg="#5D2AD0"
                 color="white"
-                boxShadow="0 2px 6px rgba(66, 42, 251, 0.22)"
-                _hover={{ bg: '#3522d4', boxShadow: '0 3px 10px rgba(66, 42, 251, 0.3)', transform: 'translateY(-1px)' }}
+                boxShadow="0 2px 6px rgba(93, 42, 208, 0.22)"
+                _hover={{ bg: '#4e23b8', boxShadow: '0 3px 10px rgba(93, 42, 208, 0.3)', transform: 'translateY(-1px)' }}
                 _active={{ transform: 'translateY(0)' }}
                 transition="all 0.2s"
               >
@@ -951,7 +874,7 @@ export default function ScreensView() {
                     h="42px"
                     borderRadius="xl"
                     borderColor="gray.200"
-                    _focus={{ borderColor: '#422AFB', boxShadow: '0 0 0 2px rgba(66, 42, 251, 0.15)' }}
+                    _focus={{ borderColor: '#5D2AD0', boxShadow: '0 0 0 2px rgba(93, 42, 208, 0.15)' }}
                   />
                 </Box>
                 <Flex alignItems="center" gap={2}>
@@ -1019,7 +942,7 @@ export default function ScreensView() {
                         _hover={{ borderColor: 'gray.400' }}
                         transition="border-color 0.2s"
                         borderColor={
-                          selectedScreens.includes(screen.id) ? '#422AFB' : undefined
+                          selectedScreens.includes(screen.id) ? '#5D2AD0' : undefined
                         }
                         bgColor={
                           selectedScreens.includes(screen.id) ? '#e8f0fe' : undefined
@@ -1218,10 +1141,10 @@ export default function ScreensView() {
                   borderColor="gray.200"
                   borderRadius="xl"
                   bg="white"
-                  _hover={{ borderColor: '#422AFB', bg: 'rgba(66, 42, 251, 0.02)' }}
+                  _hover={{ borderColor: '#5D2AD0', bg: 'rgba(93, 42, 208, 0.02)' }}
                   transition="all 0.2s ease"
                 >
-                  <Flex alignItems="center" justifyContent="center" gap={3} color="gray.500" _hover={{ color: '#422AFB' }}>
+                  <Flex alignItems="center" justifyContent="center" gap={3} color="gray.500" _hover={{ color: '#5D2AD0' }}>
                     <Plus size={24} strokeWidth={2} />
                     <Text fontWeight="semibold">Ajouter un premier écran</Text>
                   </Flex>
@@ -1272,13 +1195,25 @@ export default function ScreensView() {
                 size="md"
                 borderRadius="md"
                 borderColor="gray.300"
-                _focus={{ borderColor: '#422AFB', boxShadow: '0 0 0 1px #422AFB' }}
+                _focus={{ borderColor: '#5D2AD0', boxShadow: '0 0 0 1px #5D2AD0' }}
               />
               <Flex justifyContent="flex-end" gap={3} mt={5}>
-                <Button size="sm" variant="outline" onClick={() => setAddScreenDialogOpen(false)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  px={4}
+                  py={2}
+                  fontWeight="medium"
+                  borderRadius="xl"
+                  borderColor="#5D2AD0"
+                  color="#5D2AD0"
+                  _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
+                  transition="all 0.2s"
+                  onClick={() => setAddScreenDialogOpen(false)}
+                >
                   Annuler
                 </Button>
-                <Button size="sm" bg="#422AFB" color="white" _hover={{ bg: '#3522d4' }} onClick={confirmAddScreen}>
+                <Button size="sm" bg="#5D2AD0" color="white" _hover={{ bg: '#4e23b8' }} onClick={confirmAddScreen}>
                   Créer
                 </Button>
               </Flex>
@@ -1310,9 +1245,9 @@ export default function ScreensView() {
                   py={2.5}
                   fontWeight="medium"
                   borderRadius="xl"
-                  borderColor="gray.200"
-                  color="gray.700"
-                  _hover={{ bg: 'gray.50', borderColor: 'gray.300' }}
+                  borderColor="#5D2AD0"
+                  color="#5D2AD0"
+                  _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
                   transition="all 0.2s"
                   onClick={() => setConfirmReplaceImportOpen(false)}
                 >
@@ -1324,10 +1259,10 @@ export default function ScreensView() {
                   py={2.5}
                   fontWeight="medium"
                   borderRadius="xl"
-                  bg="#422AFB"
+                  bg="#5D2AD0"
                   color="white"
-                  boxShadow="0 2px 8px rgba(66, 42, 251, 0.25)"
-                  _hover={{ bg: '#3522d4', boxShadow: '0 4px 14px rgba(66, 42, 251, 0.35)', transform: 'translateY(-1px)' }}
+                  boxShadow="0 2px 8px rgba(93, 42, 208, 0.25)"
+                  _hover={{ bg: '#4e23b8', boxShadow: '0 4px 14px rgba(93, 42, 208, 0.35)', transform: 'translateY(-1px)' }}
                   _active={{ transform: 'translateY(0)' }}
                   transition="all 0.2s"
                   onClick={confirmReplaceImport}
@@ -1376,7 +1311,7 @@ export default function ScreensView() {
                 size="md"
                 borderRadius="md"
                 borderColor="gray.300"
-                _focus={{ borderColor: '#422AFB', boxShadow: '0 0 0 1px #422AFB' }}
+                _focus={{ borderColor: '#5D2AD0', boxShadow: '0 0 0 1px #5D2AD0' }}
               />
               <Flex justifyContent="flex-end" gap={3} mt={5}>
                 <Button
@@ -1386,9 +1321,9 @@ export default function ScreensView() {
                   py={2.5}
                   fontWeight="medium"
                   borderRadius="xl"
-                  borderColor="gray.200"
-                  color="gray.700"
-                  _hover={{ bg: 'gray.50', borderColor: 'gray.300' }}
+                  borderColor="#5D2AD0"
+                  color="#5D2AD0"
+                  _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
                   transition="all 0.2s"
                   onClick={() => setNewSheetDialogOpen(false)}
                 >
@@ -1400,10 +1335,10 @@ export default function ScreensView() {
                   py={2.5}
                   fontWeight="medium"
                   borderRadius="xl"
-                  bg="#422AFB"
+                  bg="#5D2AD0"
                   color="white"
-                  boxShadow="0 2px 8px rgba(66, 42, 251, 0.25)"
-                  _hover={{ bg: '#3522d4', boxShadow: '0 4px 14px rgba(66, 42, 251, 0.35)', transform: 'translateY(-1px)' }}
+                  boxShadow="0 2px 8px rgba(93, 42, 208, 0.25)"
+                  _hover={{ bg: '#4e23b8', boxShadow: '0 4px 14px rgba(93, 42, 208, 0.35)', transform: 'translateY(-1px)' }}
                   _active={{ transform: 'translateY(0)' }}
                   transition="all 0.2s"
                   onClick={confirmNewSheet}
@@ -1439,9 +1374,9 @@ export default function ScreensView() {
                   py={2.5}
                   fontWeight="medium"
                   borderRadius="xl"
-                  borderColor="gray.200"
-                  color="gray.700"
-                  _hover={{ bg: 'gray.50', borderColor: 'gray.300' }}
+                  borderColor="#5D2AD0"
+                  color="#5D2AD0"
+                  _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
                   transition="all 0.2s"
                   onClick={() => setSheetToDelete(null)}
                 >
@@ -1512,7 +1447,7 @@ export default function ScreensView() {
                 size="md"
                 borderRadius="md"
                 borderColor="gray.300"
-                _focus={{ borderColor: '#422AFB', boxShadow: '0 0 0 1px #422AFB' }}
+                _focus={{ borderColor: '#5D2AD0', boxShadow: '0 0 0 1px #5D2AD0' }}
               />
               <Flex justifyContent="flex-end" gap={3} mt={5}>
                 <Button
@@ -1522,9 +1457,9 @@ export default function ScreensView() {
                   py={2.5}
                   fontWeight="medium"
                   borderRadius="xl"
-                  borderColor="gray.200"
-                  color="gray.700"
-                  _hover={{ bg: 'gray.50', borderColor: 'gray.300' }}
+                  borderColor="#5D2AD0"
+                  color="#5D2AD0"
+                  _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
                   transition="all 0.2s"
                   onClick={() => { setRenameSheetTarget(null); setRenameSheetValue(''); }}
                 >
@@ -1536,10 +1471,10 @@ export default function ScreensView() {
                   py={2.5}
                   fontWeight="medium"
                   borderRadius="xl"
-                  bg="#422AFB"
+                  bg="#5D2AD0"
                   color="white"
-                  boxShadow="0 2px 8px rgba(66, 42, 251, 0.25)"
-                  _hover={{ bg: '#3522d4', boxShadow: '0 4px 14px rgba(66, 42, 251, 0.35)', transform: 'translateY(-1px)' }}
+                  boxShadow="0 2px 8px rgba(93, 42, 208, 0.25)"
+                  _hover={{ bg: '#4e23b8', boxShadow: '0 4px 14px rgba(93, 42, 208, 0.35)', transform: 'translateY(-1px)' }}
                   _active={{ transform: 'translateY(0)' }}
                   transition="all 0.2s"
                   onClick={confirmRenameSheet}
@@ -1575,9 +1510,9 @@ export default function ScreensView() {
                   py={2.5}
                   fontWeight="medium"
                   borderRadius="xl"
-                  borderColor="gray.200"
-                  color="gray.700"
-                  _hover={{ bg: 'gray.50', borderColor: 'gray.300' }}
+                  borderColor="#5D2AD0"
+                  color="#5D2AD0"
+                  _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
                   transition="all 0.2s"
                   onClick={() => setTestToDelete(null)}
                 >
@@ -1648,7 +1583,7 @@ export default function ScreensView() {
                 size="md"
                 borderRadius="md"
                 borderColor="gray.300"
-                _focus={{ borderColor: '#422AFB', boxShadow: '0 0 0 1px #422AFB' }}
+                _focus={{ borderColor: '#5D2AD0', boxShadow: '0 0 0 1px #5D2AD0' }}
               />
               <Flex justifyContent="flex-end" gap={3} mt={5}>
                 <Button
@@ -1658,9 +1593,9 @@ export default function ScreensView() {
                   py={2.5}
                   fontWeight="medium"
                   borderRadius="xl"
-                  borderColor="gray.200"
-                  color="gray.700"
-                  _hover={{ bg: 'gray.50', borderColor: 'gray.300' }}
+                  borderColor="#5D2AD0"
+                  color="#5D2AD0"
+                  _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
                   transition="all 0.2s"
                   onClick={() => { setRenameTestTarget(null); setRenameTestValue(''); }}
                 >
@@ -1672,10 +1607,10 @@ export default function ScreensView() {
                   py={2.5}
                   fontWeight="medium"
                   borderRadius="xl"
-                  bg="#422AFB"
+                  bg="#5D2AD0"
                   color="white"
-                  boxShadow="0 2px 8px rgba(66, 42, 251, 0.25)"
-                  _hover={{ bg: '#3522d4', boxShadow: '0 4px 14px rgba(66, 42, 251, 0.35)', transform: 'translateY(-1px)' }}
+                  boxShadow="0 2px 8px rgba(93, 42, 208, 0.25)"
+                  _hover={{ bg: '#4e23b8', boxShadow: '0 4px 14px rgba(93, 42, 208, 0.35)', transform: 'translateY(-1px)' }}
                   _active={{ transform: 'translateY(0)' }}
                   transition="all 0.2s"
                   onClick={confirmRenameTest}
