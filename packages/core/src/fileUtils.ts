@@ -186,6 +186,8 @@ export interface ParsedScreen {
   hasGet: boolean;
   hasMsg: boolean;
   rawRow: Record<string, unknown>;
+  /** Notes Excel par clé de champ (ex: ${champ01} -> texte note) */
+  fieldNotes?: Record<string, string>;
 }
 
 export interface ParsedWorkbook {
@@ -194,9 +196,25 @@ export interface ParsedWorkbook {
   screensBySheet: Record<string, ParsedScreen[]>;
   /** IDs de test uniques par feuille (ex. TEST-INB-001) pour le mode test */
   testIdsBySheet: Record<string, string[]>;
+  /** Notes de champs des lignes INIT, par feuille puis par écran */
+  initFieldNotesBySheet: Record<string, Record<string, Record<string, string>>>;
+  /** Fallback global: premières notes INIT trouvées par champ, par feuille */
+  defaultInitFieldNotesBySheet: Record<string, Record<string, string>>;
+  /** Notes de champs portées par l'en-tête de colonne (ligne 1) */
+  headerFieldNotesBySheet: Record<string, Record<string, string>>;
 }
 
 export type ExtractMode = 'init' | 'test';
+
+function normalizeScreenTitleKey(input: unknown): string {
+  return String(input ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 /** Parse un fichier Excel et extrait les écrans.
  * - mode 'init' : lignes INIT (définition)
@@ -207,18 +225,116 @@ export function parseExcel(
   fileName: string,
   options?: { mode?: ExtractMode; testId?: string }
 ): ParsedWorkbook {
-  const workbook = XLSX.read(buffer, { type: 'array' });
+  const getColumnIndexForKey = (headers: string[], key: string): number => {
+    const exact = headers.indexOf(key);
+    if (exact >= 0) return exact;
+    const lower = key.toLowerCase();
+    const ci = headers.findIndex((h) => h.toLowerCase() === lower);
+    if (ci >= 0) return ci;
+
+    // Fallback tolérant: mappe champ/bouton par numéro, même si l'en-tête varie
+    const isChamp = lower.includes('champ');
+    const isBouton = lower.includes('bouton');
+    if (!isChamp && !isBouton) return -1;
+
+    const digits = key.replace(/\D/g, '');
+    if (!digits) return -1;
+    const wanted = String(parseInt(digits, 10));
+    return headers.findIndex((h) => {
+      const hLower = h.toLowerCase();
+      if (isChamp && !hLower.includes('champ')) return false;
+      if (isBouton && !hLower.includes('bouton')) return false;
+      const hd = h.replace(/\D/g, '');
+      return hd ? String(parseInt(hd, 10)) === wanted : false;
+    });
+  };
+
+  const getWorksheetCellNote = (sheet: XLSX.WorkSheet, rowIndex: number, colIndex: number): string => {
+    const address = XLSX.utils.encode_cell({ r: rowIndex, c: colIndex });
+    const cell = sheet[address] as (XLSX.CellObject & { c?: Array<{ t?: unknown }>; comment?: unknown; note?: unknown }) | undefined;
+    if (!cell) return '';
+
+    const comments = Array.isArray(cell.c) ? cell.c : [];
+    const fromC = comments
+      .map((item) => {
+        const itemAny = item as unknown as { t?: unknown; h?: unknown; w?: unknown };
+        const txt = String(item?.t ?? '').trim();
+        if (txt) return txt;
+        const html = String(itemAny?.h ?? '').trim();
+        if (html) return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        const formatted = String(itemAny?.w ?? '').trim();
+        return formatted;
+      })
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+    if (fromC) return fromC;
+
+    const fromComment = String(cell.comment ?? '').trim();
+    if (fromComment) return fromComment;
+
+    const fromNote = String(cell.note ?? '').trim();
+    if (fromNote) return fromNote;
+
+    return '';
+  };
+
+  const getChampColumnIndex = (headers: string[], row: Record<string, unknown>, champIndex: number): number => {
+    const stdKey = `\${champ${champIndex.toString().padStart(2, '0')}}`;
+    const sourceKey = findKeyByIndex(row, 'champ', champIndex) ?? stdKey;
+    let colIndex = getColumnIndexForKey(headers, sourceKey);
+    if (colIndex >= 0) return colIndex;
+
+    const wanted = String(champIndex);
+    colIndex = headers.findIndex((h) => {
+      const lower = h.toLowerCase();
+      if (!lower.includes('champ')) return false;
+      const digits = h.replace(/\D/g, '');
+      return digits ? String(parseInt(digits, 10)) === wanted : false;
+    });
+    if (colIndex >= 0) return colIndex;
+
+    // Fallback ultime: position standard après ${get}
+    const byPosition = 5 + champIndex; // index 6..20 pour champ01..champ15
+    return byPosition < headers.length ? byPosition : -1;
+  };
+
+  const workbook = XLSX.read(buffer, { type: 'array', cellComments: true } as unknown as XLSX.ParsingOptions);
   const sheets: Record<string, SheetRow[]> = {};
   const screensBySheet: Record<string, ParsedScreen[]> = {};
   const testIdsBySheet: Record<string, string[]> = {};
+  const initFieldNotesBySheet: Record<string, Record<string, Record<string, string>>> = {};
+  const defaultInitFieldNotesBySheet: Record<string, Record<string, string>> = {};
+  const headerFieldNotesBySheet: Record<string, Record<string, string>> = {};
   const mode = options?.mode ?? 'init';
   const testId = options?.testId ?? '';
 
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' }) as SheetRow[];
+    const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '' }) as unknown[][];
+    const headers = (matrix[0] ?? []).map((v) => String(v ?? '').trim());
+    const rows = matrix.slice(1).map((cells) => {
+      const out: Record<string, unknown> = {};
+      headers.forEach((h, idx) => {
+        if (!h) return;
+        out[h] = cells[idx] ?? '';
+      });
+      return out as SheetRow;
+    });
 
     sheets[sheetName] = rows;
+    initFieldNotesBySheet[sheetName] = {};
+    defaultInitFieldNotesBySheet[sheetName] = {};
+    headerFieldNotesBySheet[sheetName] = {};
+
+    // Notes sur la ligne d'en-tête (r=0), utiles si le fichier documente les champs au niveau colonnes
+    for (let i = 1; i <= 15; i++) {
+      const stdKey = `\${champ${i.toString().padStart(2, '0')}}`;
+      const colIndex = getColumnIndexForKey(headers, stdKey);
+      if (colIndex < 0) continue;
+      const headerNote = getWorksheetCellNote(sheet, 0, colIndex);
+      if (headerNote) headerFieldNotesBySheet[sheetName][stdKey] = headerNote;
+    }
 
     const idVal = (r: Record<string, unknown>) =>
       findValueByKeyPattern(r, ['${id}', 'id']) ?? r['${id}'];
@@ -234,25 +350,60 @@ export function parseExcel(
 
     testIdsBySheet[sheetName] = testIds;
 
-    const filteredRows =
+    // Notes des lignes INIT (utilisées en fallback dans la vue "Gérer les tests")
+    rows.forEach((row, rowIndex) => {
+      const r = row as Record<string, unknown>;
+      if (String(typeVal(r) || '').toUpperCase() !== 'INIT') return;
+      const ecran = findValueByKeyPattern(r, ['${ecran}', 'ecran']) ?? r['${ecran}'];
+      const title = String(ecran ?? '').trim();
+      const titleKey = normalizeScreenTitleKey(title);
+      if (!title) return;
+      if (!initFieldNotesBySheet[sheetName][titleKey]) initFieldNotesBySheet[sheetName][titleKey] = {};
+      const worksheetRowIndex = rowIndex + 1;
+      for (let i = 1; i <= 15; i++) {
+        const stdKey = `\${champ${i.toString().padStart(2, '0')}}`;
+        const colIndex = getChampColumnIndex(headers, r, i);
+        if (colIndex < 0) continue;
+        const note = getWorksheetCellNote(sheet, worksheetRowIndex, colIndex);
+        if (note) {
+          initFieldNotesBySheet[sheetName][titleKey][stdKey] = note;
+          if (!defaultInitFieldNotesBySheet[sheetName][stdKey]) {
+            defaultInitFieldNotesBySheet[sheetName][stdKey] = note;
+          }
+        }
+      }
+    });
+
+    const filteredEntries =
       mode === 'test' && testId
-        ? rows.filter((r) => {
-            const r2 = r as Record<string, unknown>;
+        ? rows.map((row, rowIndex) => ({ row, rowIndex })).filter(({ row }) => {
+            const r = row as Record<string, unknown>;
             return (
-              String(typeVal(r2) || '').toUpperCase() === 'TEST' &&
-              String(idVal(r2) || '').trim() === testId.trim()
+              String(typeVal(r) || '').toUpperCase() === 'TEST' &&
+              String(idVal(r) || '').trim() === testId.trim()
             );
           })
-        : rows.filter((r) => {
-            const type = typeVal(r as Record<string, unknown>);
+        : rows.map((row, rowIndex) => ({ row, rowIndex })).filter(({ row }) => {
+            const type = typeVal(row as Record<string, unknown>);
             return String(type || '').toUpperCase() === 'INIT';
           });
 
-    const screens: ParsedScreen[] = filteredRows.map((row, idx) => {
+    const screens: ParsedScreen[] = filteredEntries.map(({ row, rowIndex }, idx) => {
       const r = row as Record<string, unknown>;
       const normalized = normalizeRowKeys(r);
       const ecran = findValueByKeyPattern(r, ['${ecran}', 'ecran']) ?? r['${ecran}'] ?? `Écran ${idx + 1}`;
       const title = typeof ecran === 'string' ? ecran : String(ecran || `Écran ${idx + 1}`);
+
+      const fieldNotes: Record<string, string> = {};
+      // rowIndex est 0-based dans les données (hors en-tête), donc +1 pour la ligne worksheet
+      const worksheetRowIndex = rowIndex + 1;
+      for (let i = 1; i <= 15; i++) {
+        const stdKey = `\${champ${i.toString().padStart(2, '0')}}`;
+        const colIndex = getChampColumnIndex(headers, r, i);
+        if (colIndex < 0) continue;
+        const note = getWorksheetCellNote(sheet, worksheetRowIndex, colIndex);
+        if (note) fieldNotes[stdKey] = note;
+      }
 
       let hasFields = false;
       let hasButtons = false;
@@ -284,13 +435,22 @@ export function parseExcel(
         hasGet,
         hasMsg,
         rawRow: normalized,
+        fieldNotes,
       };
     });
 
     screensBySheet[sheetName] = screens;
   }
 
-  return { fileName, sheets, screensBySheet, testIdsBySheet };
+  return {
+    fileName,
+    sheets,
+    screensBySheet,
+    testIdsBySheet,
+    initFieldNotesBySheet,
+    defaultInitFieldNotesBySheet,
+    headerFieldNotesBySheet,
+  };
 }
 
 /** Trouve la première ligne INIT dont ${ecran} === nomEcran (pour labels des champs) */

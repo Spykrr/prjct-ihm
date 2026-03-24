@@ -60,7 +60,7 @@ export default function ChampsModal({ isOpen, onClose, title, titleIcon, childre
                 p={2}
                 borderRadius="lg"
                 color="gray.500"
-                _hover={{ bg: 'rgba(93, 42, 208, 0.08)', color: '#5D2AD0' }}
+                _hover={{ bg: 'rgba(59, 130, 246, 0.08)', color: '#3B82F6' }}
                 transition="colors 0.2s"
                 aria-label="Fermer"
               >

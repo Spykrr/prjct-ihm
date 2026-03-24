@@ -21,7 +21,7 @@ export default function AppSidebar() {
       top={0}
       bottom={0}
       w="240px"
-      background="linear-gradient(180deg, #6036D1 0%, #5D2AD0 40%, #4e23b8 75%, #401d9e 100%)"
+      background="linear-gradient(180deg, #60A5FA 0%, #3B82F6 40%, #2563EB 75%, #1D4ED8 100%)"
       color="white"
       overflowY="auto"
       zIndex={20}
@@ -40,8 +40,8 @@ export default function AppSidebar() {
                 xmlns="http://www.w3.org/2000/svg"
               >
                 <rect x="10" y="8" width="36" height="28" rx="6" fill="white" />
-                <circle cx="22" cy="20" r="4" fill="#5D2AD0" />
-                <circle cx="34" cy="20" r="4" fill="#5D2AD0" />
+                <circle cx="22" cy="20" r="4" fill="#3B82F6" />
+                <circle cx="34" cy="20" r="4" fill="#3B82F6" />
                 <line x1="28" y1="8" x2="28" y2="0" stroke="white" strokeWidth="2" strokeLinecap="round" />
                 <circle cx="28" cy="0" r="2.5" fill="white" />
                 <line x1="10" y1="22" x2="4" y2="22" stroke="white" strokeWidth="2" strokeLinecap="round" />
@@ -89,17 +89,17 @@ export default function AppSidebar() {
                   py={3}
                   borderRadius="lg"
                   bg={isActive ? 'white' : 'transparent'}
-                  color={isActive ? '#1D0D5E' : 'white'}
+                  color={isActive ? '#1E3A8A' : 'white'}
                   fontWeight={isActive ? '600' : '500'}
                   _hover={{
                     bg: isActive ? 'white' : 'whiteAlpha.200',
-                    color: isActive ? '#1D0D5E' : 'white',
+                    color: isActive ? '#1E3A8A' : 'white',
                   }}
                   transition="all 0.2s"
                   fontFamily={SIDEBAR_FONT}
                 >
                   <Flex alignItems="center" gap={3}>
-                    <Box color={isActive ? '#5D2AD0' : 'inherit'}>
+                    <Box color={isActive ? '#3B82F6' : 'inherit'}>
                       <Icon size={18} strokeWidth={2} />
                     </Box>
                     <Text fontSize="sm" lineHeight="1.4">

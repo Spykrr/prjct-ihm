@@ -28,7 +28,8 @@ import {
   MousePointerClick,
   MessageSquare,
 } from 'lucide-react';
-import { parseExcel, type ParsedScreen, type ParsedWorkbook } from '@uptest/core';
+import { parseExcel, generateWorksheetFromData, type ParsedScreen, type ParsedWorkbook, type SheetRow } from '@uptest/core';
+import * as XLSX from 'xlsx';
 import { openExcelFile } from '../../../utils/fileImport';
 import { useSidebar } from '../../../contexts/useSidebar';
 import { useToast } from '../../../contexts/ToastContext';
@@ -36,6 +37,19 @@ import ModalContent from './ModalContent';
 
 type Screen = ParsedScreen;
 type TestDisplayNamesMap = Record<string, Record<string, string>>;
+
+function downloadWorkbook(wb: XLSX.WorkBook, fileName: string) {
+  const array = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+  const blob = new Blob([array], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 function minimalInitScreen(): Screen {
   const rawRow: Record<string, unknown> = {
@@ -256,6 +270,46 @@ export default function ScreensView() {
   const deleteScreen = (id: string) => {
     setScreens(screens.filter((s) => s.id !== id));
     setSelectedScreens(selectedScreens.filter((sid) => sid !== id));
+  };
+
+  const handleSaveWorkbook = () => {
+    if (!workbook && !currentSheet) return;
+
+    const wb = XLSX.utils.book_new();
+    const fileName =
+      (workbook?.fileName?.toLowerCase().endsWith('.xlsx')
+        ? workbook.fileName
+        : `${workbook?.fileName ?? 'tests'}.xlsx`);
+
+    const sheetNamesToSave = Array.from(
+      new Set([
+        ...(workbook ? Object.keys(workbook.sheets) : []),
+        ...Object.keys(addedSheets),
+      ])
+    ).filter((name) => !hiddenSheetNames.includes(name));
+
+    sheetNamesToSave.forEach((sheetName) => {
+      let rows: SheetRow[] = [];
+
+      if (sheetName === currentSheet) {
+        rows = currentScreens.map((s) => s.rawRow as SheetRow);
+      } else if (addedSheets[sheetName]) {
+        rows = addedSheets[sheetName].map((s) => s.rawRow as SheetRow);
+      } else {
+        rows = (workbook?.sheets[sheetName] ?? []) as SheetRow[];
+      }
+
+      const ws = generateWorksheetFromData(rows, sheetName);
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    });
+
+    if (wb.SheetNames.length === 0 && currentSheet) {
+      const ws = generateWorksheetFromData(currentScreens.map((s) => s.rawRow as SheetRow), currentSheet);
+      XLSX.utils.book_append_sheet(wb, ws, currentSheet);
+    }
+
+    downloadWorkbook(wb, fileName);
+    showSuccess('Fichier sauvegardé avec succès');
   };
 
   const deleteSelectedScreens = () => {
@@ -571,9 +625,9 @@ export default function ScreensView() {
               py={2}
               fontWeight="medium"
               borderRadius="lg"
-              borderColor="#5D2AD0"
-              color="#5D2AD0"
-              _hover={{ bg: 'rgba(93, 42, 208, 0.08)', borderColor: '#4e23b8' }}
+              borderColor="#3B82F6"
+              color="#3B82F6"
+              _hover={{ bg: 'rgba(59, 130, 246, 0.08)', borderColor: '#2563EB' }}
               transition="all 0.2s"
               onClick={handleImport}
             >
@@ -587,12 +641,14 @@ export default function ScreensView() {
               py={2}
               fontWeight="medium"
               borderRadius="lg"
-              bg="#5D2AD0"
+              bg="#3B82F6"
               color="white"
-              boxShadow="0 2px 6px rgba(93, 42, 208, 0.22)"
-              _hover={{ bg: '#4e23b8', boxShadow: '0 3px 10px rgba(93, 42, 208, 0.3)', transform: 'translateY(-1px)' }}
+              boxShadow="0 2px 6px rgba(59, 130, 246, 0.22)"
+              _hover={{ bg: '#2563EB', boxShadow: '0 3px 10px rgba(59, 130, 246, 0.3)', transform: 'translateY(-1px)' }}
               _active={{ transform: 'translateY(0)' }}
               transition="all 0.2s"
+              onClick={handleSaveWorkbook}
+              disabled={!workbook && !currentSheet}
             >
               <Download size={16} />
               Sauvegarder
@@ -622,7 +678,7 @@ export default function ScreensView() {
                     p={3}
                     bg={currentSheet === sheetName ? '#e8f0fe' : 'white'}
                     borderWidth="1px"
-                    borderColor={currentSheet === sheetName ? '#5D2AD0' : 'gray.200'}
+                    borderColor={currentSheet === sheetName ? '#3B82F6' : 'gray.200'}
                     borderRadius="lg"
                     cursor="pointer"
                     _hover={{ borderColor: 'gray.300' }}
@@ -643,7 +699,7 @@ export default function ScreensView() {
                           }}
                           display="inline-flex"
                           flexShrink={0}
-                          color={currentSheet === sheetName ? '#5D2AD0' : '#4b5563'}
+                          color={currentSheet === sheetName ? '#3B82F6' : '#4b5563'}
                           cursor="pointer"
                           _hover={{ opacity: 0.8 }}
                         >
@@ -653,7 +709,7 @@ export default function ScreensView() {
                             <ChevronRight size={16} />
                           )}
                         </Box>
-                        <Box flexShrink={0}><FolderOpen size={16} color={currentSheet === sheetName ? '#5D2AD0' : '#4b5563'} /></Box>
+                        <Box flexShrink={0}><FolderOpen size={16} color={currentSheet === sheetName ? '#3B82F6' : '#4b5563'} /></Box>
                         <Text fontWeight="medium" fontSize="sm" truncate>
                           {sheetDisplayNames[sheetName] ?? sheetName}
                         </Text>
@@ -677,7 +733,7 @@ export default function ScreensView() {
                           borderRadius="md"
                           cursor="pointer"
                           bg={currentSheet === sheetName && selectedNode === node ? '#ede9fe' : 'transparent'}
-                          color={currentSheet === sheetName && selectedNode === node ? '#5D2AD0' : 'gray.700'}
+                          color={currentSheet === sheetName && selectedNode === node ? '#3B82F6' : 'gray.700'}
                           _hover={{ bg: currentSheet === sheetName && selectedNode === node ? '#ede9fe' : 'gray.100' }}
                           onClick={() => {
                             if (currentSheet !== sheetName) handleSelectSheet(sheetName);
@@ -832,10 +888,10 @@ export default function ScreensView() {
                 py={2.5}
                 fontWeight="medium"
                 borderRadius="lg"
-                bg="#5D2AD0"
+                bg="#3B82F6"
                 color="white"
-                boxShadow="0 2px 6px rgba(93, 42, 208, 0.22)"
-                _hover={{ bg: '#4e23b8', boxShadow: '0 3px 10px rgba(93, 42, 208, 0.3)', transform: 'translateY(-1px)' }}
+                boxShadow="0 2px 6px rgba(59, 130, 246, 0.22)"
+                _hover={{ bg: '#2563EB', boxShadow: '0 3px 10px rgba(59, 130, 246, 0.3)', transform: 'translateY(-1px)' }}
                 _active={{ transform: 'translateY(0)' }}
                 transition="all 0.2s"
               >
@@ -874,7 +930,7 @@ export default function ScreensView() {
                     h="42px"
                     borderRadius="xl"
                     borderColor="gray.200"
-                    _focus={{ borderColor: '#5D2AD0', boxShadow: '0 0 0 2px rgba(93, 42, 208, 0.15)' }}
+                    _focus={{ borderColor: '#3B82F6', boxShadow: '0 0 0 2px rgba(59, 130, 246, 0.15)' }}
                   />
                 </Box>
                 <Flex alignItems="center" gap={2}>
@@ -942,7 +998,7 @@ export default function ScreensView() {
                         _hover={{ borderColor: 'gray.400' }}
                         transition="border-color 0.2s"
                         borderColor={
-                          selectedScreens.includes(screen.id) ? '#5D2AD0' : undefined
+                          selectedScreens.includes(screen.id) ? '#3B82F6' : undefined
                         }
                         bgColor={
                           selectedScreens.includes(screen.id) ? '#e8f0fe' : undefined
@@ -1141,10 +1197,10 @@ export default function ScreensView() {
                   borderColor="gray.200"
                   borderRadius="xl"
                   bg="white"
-                  _hover={{ borderColor: '#5D2AD0', bg: 'rgba(93, 42, 208, 0.02)' }}
+                  _hover={{ borderColor: '#3B82F6', bg: 'rgba(59, 130, 246, 0.06)' }}
                   transition="all 0.2s ease"
                 >
-                  <Flex alignItems="center" justifyContent="center" gap={3} color="gray.500" _hover={{ color: '#5D2AD0' }}>
+                  <Flex alignItems="center" justifyContent="center" gap={3} color="gray.500" _hover={{ color: '#3B82F6' }}>
                     <Plus size={24} strokeWidth={2} />
                     <Text fontWeight="semibold">Ajouter un premier écran</Text>
                   </Flex>
@@ -1195,7 +1251,7 @@ export default function ScreensView() {
                 size="md"
                 borderRadius="md"
                 borderColor="gray.300"
-                _focus={{ borderColor: '#5D2AD0', boxShadow: '0 0 0 1px #5D2AD0' }}
+                _focus={{ borderColor: '#3B82F6', boxShadow: '0 0 0 1px #3B82F6' }}
               />
               <Flex justifyContent="flex-end" gap={3} mt={5}>
                 <Button
@@ -1205,15 +1261,15 @@ export default function ScreensView() {
                   py={2}
                   fontWeight="medium"
                   borderRadius="xl"
-                  borderColor="#5D2AD0"
-                  color="#5D2AD0"
-                  _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
+                  borderColor="#3B82F6"
+                  color="#3B82F6"
+                  _hover={{ bg: 'rgba(59, 130, 246, 0.08)', borderColor: '#2563EB' }}
                   transition="all 0.2s"
                   onClick={() => setAddScreenDialogOpen(false)}
                 >
                   Annuler
                 </Button>
-                <Button size="sm" bg="#5D2AD0" color="white" _hover={{ bg: '#4e23b8' }} onClick={confirmAddScreen}>
+                <Button size="sm" bg="#3B82F6" color="white" _hover={{ bg: '#2563EB' }} onClick={confirmAddScreen}>
                   Créer
                 </Button>
               </Flex>
@@ -1245,9 +1301,9 @@ export default function ScreensView() {
                   py={2.5}
                   fontWeight="medium"
                   borderRadius="xl"
-                  borderColor="#5D2AD0"
-                  color="#5D2AD0"
-                  _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
+                  borderColor="#3B82F6"
+                  color="#3B82F6"
+                  _hover={{ bg: 'rgba(59, 130, 246, 0.08)', borderColor: '#2563EB' }}
                   transition="all 0.2s"
                   onClick={() => setConfirmReplaceImportOpen(false)}
                 >
@@ -1259,10 +1315,10 @@ export default function ScreensView() {
                   py={2.5}
                   fontWeight="medium"
                   borderRadius="xl"
-                  bg="#5D2AD0"
+                  bg="#3B82F6"
                   color="white"
-                  boxShadow="0 2px 8px rgba(93, 42, 208, 0.25)"
-                  _hover={{ bg: '#4e23b8', boxShadow: '0 4px 14px rgba(93, 42, 208, 0.35)', transform: 'translateY(-1px)' }}
+                  boxShadow="0 2px 8px rgba(59, 130, 246, 0.25)"
+                  _hover={{ bg: '#2563EB', boxShadow: '0 4px 14px rgba(59, 130, 246, 0.35)', transform: 'translateY(-1px)' }}
                   _active={{ transform: 'translateY(0)' }}
                   transition="all 0.2s"
                   onClick={confirmReplaceImport}
@@ -1311,7 +1367,7 @@ export default function ScreensView() {
                 size="md"
                 borderRadius="md"
                 borderColor="gray.300"
-                _focus={{ borderColor: '#5D2AD0', boxShadow: '0 0 0 1px #5D2AD0' }}
+                _focus={{ borderColor: '#3B82F6', boxShadow: '0 0 0 1px #3B82F6' }}
               />
               <Flex justifyContent="flex-end" gap={3} mt={5}>
                 <Button
@@ -1321,9 +1377,9 @@ export default function ScreensView() {
                   py={2.5}
                   fontWeight="medium"
                   borderRadius="xl"
-                  borderColor="#5D2AD0"
-                  color="#5D2AD0"
-                  _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
+                  borderColor="#3B82F6"
+                  color="#3B82F6"
+                  _hover={{ bg: 'rgba(59, 130, 246, 0.08)', borderColor: '#2563EB' }}
                   transition="all 0.2s"
                   onClick={() => setNewSheetDialogOpen(false)}
                 >
@@ -1335,10 +1391,10 @@ export default function ScreensView() {
                   py={2.5}
                   fontWeight="medium"
                   borderRadius="xl"
-                  bg="#5D2AD0"
+                  bg="#3B82F6"
                   color="white"
-                  boxShadow="0 2px 8px rgba(93, 42, 208, 0.25)"
-                  _hover={{ bg: '#4e23b8', boxShadow: '0 4px 14px rgba(93, 42, 208, 0.35)', transform: 'translateY(-1px)' }}
+                  boxShadow="0 2px 8px rgba(59, 130, 246, 0.25)"
+                  _hover={{ bg: '#2563EB', boxShadow: '0 4px 14px rgba(59, 130, 246, 0.35)', transform: 'translateY(-1px)' }}
                   _active={{ transform: 'translateY(0)' }}
                   transition="all 0.2s"
                   onClick={confirmNewSheet}
@@ -1374,9 +1430,9 @@ export default function ScreensView() {
                   py={2.5}
                   fontWeight="medium"
                   borderRadius="xl"
-                  borderColor="#5D2AD0"
-                  color="#5D2AD0"
-                  _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
+                  borderColor="#3B82F6"
+                  color="#3B82F6"
+                  _hover={{ bg: 'rgba(59, 130, 246, 0.08)', borderColor: '#2563EB' }}
                   transition="all 0.2s"
                   onClick={() => setSheetToDelete(null)}
                 >
@@ -1447,7 +1503,7 @@ export default function ScreensView() {
                 size="md"
                 borderRadius="md"
                 borderColor="gray.300"
-                _focus={{ borderColor: '#5D2AD0', boxShadow: '0 0 0 1px #5D2AD0' }}
+                _focus={{ borderColor: '#3B82F6', boxShadow: '0 0 0 1px #3B82F6' }}
               />
               <Flex justifyContent="flex-end" gap={3} mt={5}>
                 <Button
@@ -1457,9 +1513,9 @@ export default function ScreensView() {
                   py={2.5}
                   fontWeight="medium"
                   borderRadius="xl"
-                  borderColor="#5D2AD0"
-                  color="#5D2AD0"
-                  _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
+                  borderColor="#3B82F6"
+                  color="#3B82F6"
+                  _hover={{ bg: 'rgba(59, 130, 246, 0.08)', borderColor: '#2563EB' }}
                   transition="all 0.2s"
                   onClick={() => { setRenameSheetTarget(null); setRenameSheetValue(''); }}
                 >
@@ -1471,10 +1527,10 @@ export default function ScreensView() {
                   py={2.5}
                   fontWeight="medium"
                   borderRadius="xl"
-                  bg="#5D2AD0"
+                  bg="#3B82F6"
                   color="white"
-                  boxShadow="0 2px 8px rgba(93, 42, 208, 0.25)"
-                  _hover={{ bg: '#4e23b8', boxShadow: '0 4px 14px rgba(93, 42, 208, 0.35)', transform: 'translateY(-1px)' }}
+                  boxShadow="0 2px 8px rgba(59, 130, 246, 0.25)"
+                  _hover={{ bg: '#2563EB', boxShadow: '0 4px 14px rgba(59, 130, 246, 0.35)', transform: 'translateY(-1px)' }}
                   _active={{ transform: 'translateY(0)' }}
                   transition="all 0.2s"
                   onClick={confirmRenameSheet}
@@ -1510,9 +1566,9 @@ export default function ScreensView() {
                   py={2.5}
                   fontWeight="medium"
                   borderRadius="xl"
-                  borderColor="#5D2AD0"
-                  color="#5D2AD0"
-                  _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
+                  borderColor="#3B82F6"
+                  color="#3B82F6"
+                  _hover={{ bg: 'rgba(59, 130, 246, 0.08)', borderColor: '#2563EB' }}
                   transition="all 0.2s"
                   onClick={() => setTestToDelete(null)}
                 >
@@ -1583,7 +1639,7 @@ export default function ScreensView() {
                 size="md"
                 borderRadius="md"
                 borderColor="gray.300"
-                _focus={{ borderColor: '#5D2AD0', boxShadow: '0 0 0 1px #5D2AD0' }}
+                _focus={{ borderColor: '#3B82F6', boxShadow: '0 0 0 1px #3B82F6' }}
               />
               <Flex justifyContent="flex-end" gap={3} mt={5}>
                 <Button
@@ -1593,9 +1649,9 @@ export default function ScreensView() {
                   py={2.5}
                   fontWeight="medium"
                   borderRadius="xl"
-                  borderColor="#5D2AD0"
-                  color="#5D2AD0"
-                  _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
+                  borderColor="#3B82F6"
+                  color="#3B82F6"
+                  _hover={{ bg: 'rgba(59, 130, 246, 0.08)', borderColor: '#2563EB' }}
                   transition="all 0.2s"
                   onClick={() => { setRenameTestTarget(null); setRenameTestValue(''); }}
                 >
@@ -1607,10 +1663,10 @@ export default function ScreensView() {
                   py={2.5}
                   fontWeight="medium"
                   borderRadius="xl"
-                  bg="#5D2AD0"
+                  bg="#3B82F6"
                   color="white"
-                  boxShadow="0 2px 8px rgba(93, 42, 208, 0.25)"
-                  _hover={{ bg: '#4e23b8', boxShadow: '0 4px 14px rgba(93, 42, 208, 0.35)', transform: 'translateY(-1px)' }}
+                  boxShadow="0 2px 8px rgba(59, 130, 246, 0.25)"
+                  _hover={{ bg: '#2563EB', boxShadow: '0 4px 14px rgba(59, 130, 246, 0.35)', transform: 'translateY(-1px)' }}
                   _active={{ transform: 'translateY(0)' }}
                   transition="all 0.2s"
                   onClick={confirmRenameTest}

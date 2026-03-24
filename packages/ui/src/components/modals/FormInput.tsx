@@ -38,7 +38,7 @@ export default function FormInput({
           h="40px"
           borderRadius="lg"
           borderColor="gray.200"
-          _focus={{ borderColor: '#5D2AD0', boxShadow: '0 0 0 2px rgba(93, 42, 208, 0.15)' }}
+          _focus={{ borderColor: '#3B82F6', boxShadow: '0 0 0 2px rgba(59, 130, 246, 0.15)' }}
           bg={label || option ? 'blue.50' : 'white'}
         />
         {showOption && (
@@ -51,6 +51,7 @@ export default function FormInput({
             h="40px"
             borderRadius="lg"
             borderColor="gray.200"
+            _focus={{ borderColor: '#3B82F6', boxShadow: '0 0 0 2px rgba(59, 130, 246, 0.15)' }}
             fontFamily="mono"
             title={help ?? undefined}
             bg={label || option ? 'blue.50' : 'white'}

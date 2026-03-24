@@ -37,6 +37,55 @@ function downloadCsv(content: string, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
+function pad5(n: number): string {
+  return String(Math.max(0, Math.floor(n))).padStart(5, '0');
+}
+
+function normalizePredecesseurKey(value: string): string {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  const parts = raw.split('##').map((p) => p.trim());
+  if (parts.length < 4) return raw;
+  const [instance, ordreInstanceRaw, ordreGroupeRaw, module] = parts;
+  const ordreInstance = /^\d+$/.test(ordreInstanceRaw) ? pad5(parseInt(ordreInstanceRaw, 10)) : ordreInstanceRaw;
+  const ordreGroupe = /^\d+$/.test(ordreGroupeRaw) ? pad5(parseInt(ordreGroupeRaw, 10)) : ordreGroupeRaw;
+  return `${instance}##${ordreInstance}##${ordreGroupe}##${module}`;
+}
+
+function normalizeNoAccents(s: string): string {
+  return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+}
+
+function getPredecesseurValue(option: RefOption): string {
+  const row = option as Record<string, unknown>;
+  const directKeys = ['Predecesseur', 'predecesseur', 'Prédécesseur', 'prédécesseur', 'Predecessor', 'predecessor'];
+  for (const key of directKeys) {
+    const val = row[key];
+    if (val != null && String(val).trim() !== '') return String(val).trim();
+  }
+  const fallbackKey = Object.keys(row).find((k) => {
+    const nk = normalizeNoAccents(k);
+    return nk.includes('predecesseur') || nk.includes('predecessor');
+  });
+  if (!fallbackKey) return '';
+  const fallbackValue = row[fallbackKey];
+  return fallbackValue != null ? String(fallbackValue).trim() : '';
+}
+
+function setPredecesseurValue(option: RefOption, value: string): RefOption {
+  const row = option as Record<string, unknown>;
+  const directKeys = ['Predecesseur', 'predecesseur', 'Prédécesseur', 'prédécesseur', 'Predecessor', 'predecessor'];
+  for (const key of directKeys) {
+    if (key in row) return { ...option, [key]: value };
+  }
+  const fallbackKey = Object.keys(row).find((k) => {
+    const nk = normalizeNoAccents(k);
+    return nk.includes('predecesseur') || nk.includes('predecessor');
+  });
+  if (fallbackKey) return { ...option, [fallbackKey]: value };
+  return { ...option, Predecesseur: value };
+}
+
 export default function OrdonnancementView() {
   const { showSuccess } = useToast();
   const [instances, setInstances] = useState<RefInstance[]>([]);
@@ -160,15 +209,20 @@ export default function OrdonnancementView() {
     if (!currentInstance) return;
 
     setInstances((prev) => {
-      return prev.map((inst) => {
+      const currentInst = prev.find((inst) => inst.name === currentInstance);
+      if (!currentInst) return prev;
+
+      const groupsForCurrentInst = currentInst.childreen ?? [];
+      const targetGroup = groupsForCurrentInst[indexGrp];
+      const oldOption = targetGroup?.childreen?.[indexOpt];
+      if (!targetGroup || !oldOption) return prev;
+
+      const updatedInstances = prev.map((inst) => {
         if (inst.name !== currentInstance) return inst;
 
         const groupsForInst = inst.childreen ?? [];
-        const targetGroup = groupsForInst[indexGrp];
-        if (!targetGroup) return inst;
 
-        const oldOption = targetGroup.childreen[indexOpt];
-        let newGroupsForInst = groupsForInst.map((g, i) => {
+        const newGroupsForInst = groupsForInst.map((g, i) => {
           if (i !== indexGrp) return g;
           const newChildreen = [...g.childreen];
           newChildreen[indexOpt] = opt;
@@ -176,43 +230,37 @@ export default function OrdonnancementView() {
           return { ...g, childreen: newChildreen };
         });
 
-        // Cascade sur les prédécesseurs si l'ordre de groupe a changé
-        if (
-          oldOption &&
-          oldOption.ordreOption != null &&
-          opt.ordreOption != null &&
-          oldOption.ordreOption !== opt.ordreOption
-        ) {
-          const PAD_5_LOCAL = (n: number) => String(Math.max(0, Math.floor(n))).padStart(5, '0');
-          const instanceName = inst.name;
-          const ordreModule =
-            (oldOption.OrdreModule as number | undefined) ??
-            (targetGroup.orderModule as number | undefined) ??
-            0;
-          const module = (oldOption.Module as string | undefined) ?? '';
-
-          const oldKey = `${instanceName}##${PAD_5_LOCAL(ordreModule)}##${PAD_5_LOCAL(
-            oldOption.ordreOption
-          )}##${module}`;
-          const newKey = `${instanceName}##${PAD_5_LOCAL(ordreModule)}##${PAD_5_LOCAL(
-            opt.ordreOption
-          )}##${module}`;
-
-          newGroupsForInst = newGroupsForInst.map((g) => ({
-            ...g,
-            childreen: g.childreen.map((o) => {
-              const pred = (o.Predecesseur as string | undefined) ?? '';
-              if (!pred) return o;
-              if (pred.trim() === oldKey) {
-                return { ...o, Predecesseur: newKey };
-              }
-              return o;
-            }),
-          }));
-        }
-
         return { ...inst, childreen: newGroupsForInst };
       });
+
+      const oldOrdreOption = Number(oldOption.ordreOption ?? NaN);
+      const newOrdreOption = Number(opt.ordreOption ?? NaN);
+      if (!Number.isFinite(oldOrdreOption) || !Number.isFinite(newOrdreOption) || oldOrdreOption === newOrdreOption) {
+        return updatedInstances;
+      }
+
+      const sourceInstance = String(oldOption.Instance ?? currentInstance).trim() || currentInstance;
+      const sourceOrdreModule = Number(oldOption.OrdreModule ?? targetGroup.orderModule ?? 0);
+      const sourceModule = String(oldOption.Module ?? opt.Module ?? '').trim();
+      const oldKey = normalizePredecesseurKey(
+        `${sourceInstance}##${pad5(sourceOrdreModule)}##${pad5(oldOrdreOption)}##${sourceModule}`
+      );
+      const newKey = normalizePredecesseurKey(
+        `${sourceInstance}##${pad5(sourceOrdreModule)}##${pad5(newOrdreOption)}##${sourceModule}`
+      );
+
+      return updatedInstances.map((inst) => ({
+        ...inst,
+        childreen: (inst.childreen ?? []).map((grp) => ({
+          ...grp,
+          childreen: (grp.childreen ?? []).map((candidate) => {
+            const pred = getPredecesseurValue(candidate);
+            if (!pred) return candidate;
+            if (normalizePredecesseurKey(pred) !== oldKey) return candidate;
+            return setPredecesseurValue(candidate, newKey);
+          }),
+        })),
+      }));
     });
   };
 
@@ -256,9 +304,9 @@ export default function OrdonnancementView() {
               py={2.5}
               fontWeight="medium"
               borderRadius="xl"
-              borderColor="#5D2AD0"
-              color="#5D2AD0"
-              _hover={{ bg: 'blue.50', borderColor: '#4e23b8' }}
+              borderColor="#3B82F6"
+              color="#3B82F6"
+              _hover={{ bg: 'blue.50', borderColor: '#2563EB' }}
               transition="all 0.2s ease"
               onClick={handleImport}
             >
@@ -272,10 +320,10 @@ export default function OrdonnancementView() {
               py={2.5}
               fontWeight="medium"
               borderRadius="xl"
-              bg="#5D2AD0"
+              bg="#3B82F6"
               color="white"
-              boxShadow="0 2px 8px rgba(93, 42, 208, 0.25)"
-              _hover={{ bg: '#4e23b8', boxShadow: '0 4px 14px rgba(93, 42, 208, 0.35)', transform: 'translateY(-1px)' }}
+              boxShadow="0 2px 8px rgba(59, 130, 246, 0.25)"
+              _hover={{ bg: '#2563EB', boxShadow: '0 4px 14px rgba(59, 130, 246, 0.35)', transform: 'translateY(-1px)' }}
               _active={{ transform: 'translateY(0)' }}
               transition="all 0.2s ease"
               onClick={handleExport}
@@ -310,9 +358,9 @@ export default function OrdonnancementView() {
                   px={4}
                   py={2}
                   borderRadius="lg"
-                  borderColor="#5D2AD0"
-                  color="#5D2AD0"
-                  _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
+                  borderColor="#3B82F6"
+                  color="#3B82F6"
+                  _hover={{ bg: 'rgba(59, 130, 246, 0.08)', borderColor: '#2563EB' }}
                   transition="all 0.2s"
                   onClick={() => setGroupToDelete(null)}
                 >
@@ -360,7 +408,7 @@ export default function OrdonnancementView() {
                 onClick={() => setOrganigrammeOpen(true)}
                 borderColor="gray.200"
                 borderRadius="xl"
-                _hover={{ borderColor: '#5D2AD0', bg: 'blue.50', color: '#5D2AD0' }}
+                _hover={{ borderColor: '#3B82F6', bg: 'blue.50', color: '#3B82F6' }}
                 transition="all 0.2s"
               >
                 <Network size={16} />
@@ -389,10 +437,21 @@ export default function OrdonnancementView() {
                       p={3}
                       bg={isSelected ? 'blue.50' : 'transparent'}
                       borderWidth="1px"
-                      borderColor={isSelected ? '#5D2AD0' : 'transparent'}
+                      borderColor={isSelected ? '#3B82F6' : 'transparent'}
                       borderRadius="xl"
                       cursor="pointer"
-                      _hover={{ bg: isSelected ? 'blue.50' : 'gray.50', borderColor: isSelected ? '#5D2AD0' : 'gray.200' }}
+                      boxShadow={
+                        isSelected
+                          ? '0 10px 22px rgba(15, 23, 42, 0.14), 0 4px 10px rgba(15, 23, 42, 0.10)'
+                          : '0 6px 14px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.06)'
+                      }
+                      _hover={{
+                        bg: isSelected ? 'blue.50' : 'gray.50',
+                        borderColor: isSelected ? '#3B82F6' : 'gray.200',
+                        boxShadow: isSelected
+                          ? '0 10px 22px rgba(15, 23, 42, 0.14), 0 4px 10px rgba(15, 23, 42, 0.10)'
+                          : '0 8px 18px rgba(15, 23, 42, 0.10), 0 3px 8px rgba(15, 23, 42, 0.08)',
+                      }}
                       transition="all 0.2s"
                       onClick={() => setCurrentInstance(inst.name)}
                     >
@@ -400,7 +459,7 @@ export default function OrdonnancementView() {
                         <Box flexShrink={0}>
                           <FolderOpen
                             size={16}
-                            color={isSelected ? '#5D2AD0' : '#64748b'}
+                            color={isSelected ? '#3B82F6' : '#64748b'}
                           />
                         </Box>
                         <Text fontWeight="medium" fontSize="sm" lineClamp={1} color={isSelected ? 'gray.900' : 'gray.700'}>
@@ -458,10 +517,10 @@ export default function OrdonnancementView() {
                 py={3}
                 fontWeight="semibold"
                 borderRadius="xl"
-                bg="#5D2AD0"
+                bg="#3B82F6"
                 color="white"
-                boxShadow="0 4px 14px rgba(93, 42, 208, 0.25)"
-                _hover={{ bg: '#4e23b8', boxShadow: '0 6px 20px rgba(93, 42, 208, 0.35)', transform: 'translateY(-2px)' }}
+                boxShadow="0 4px 14px rgba(59, 130, 246, 0.25)"
+                _hover={{ bg: '#2563EB', boxShadow: '0 6px 20px rgba(59, 130, 246, 0.35)', transform: 'translateY(-2px)' }}
                 _active={{ transform: 'translateY(0)' }}
                 transition="all 0.2s ease"
               >
@@ -515,12 +574,22 @@ export default function OrdonnancementView() {
                           borderRadius="2xl"
                           overflow="hidden"
                           borderColor="gray.200"
-                          boxShadow="0 1px 3px rgba(0,0,0,0.04)"
-                          _hover={{ boxShadow: '0 4px 12px rgba(0,0,0,0.06)', borderColor: 'gray.300' }}
+                          boxShadow="0 14px 28px rgba(15, 23, 42, 0.14), 0 6px 12px rgba(15, 23, 42, 0.10)"
+                          _hover={{
+                            boxShadow: '0 14px 28px rgba(15, 23, 42, 0.14), 0 6px 12px rgba(15, 23, 42, 0.10)',
+                            borderColor: 'gray.300',
+                          }}
                           transition="all 0.2s ease"
                         >
                           <Accordion.ItemTrigger asChild>
-                            <Box as="button" w="full" textAlign="left" p={4} _hover={{ bg: 'gray.50' }}>
+                            <Box
+                              as="button"
+                              w="full"
+                              textAlign="left"
+                              p={4}
+                              bg="linear-gradient(180deg, rgba(255,255,255,1) 0%, rgba(248,250,252,0.9) 100%)"
+                              _hover={{ bg: 'linear-gradient(180deg, rgba(255,255,255,1) 0%, rgba(241,245,249,0.9) 100%)' }}
+                            >
                               <Flex alignItems="center" justifyContent="space-between" gap={4} w="full">
                                 <Flex alignItems="center" gap={3} flex="1" minW={0}>
                                   <Box as="span" display="inline-flex" flexShrink={0}>
@@ -615,7 +684,7 @@ export default function OrdonnancementView() {
                 borderColor="gray.300"
                 borderRadius="2xl"
                 bg="white"
-                _hover={{ borderColor: '#5D2AD0', bg: 'blue.50', color: '#5D2AD0' }}
+                _hover={{ borderColor: '#3B82F6', bg: 'blue.50', color: '#3B82F6' }}
                 transition="all 0.2s ease"
               >
                 <Flex alignItems="center" justifyContent="center" gap={2} color="gray.500">
@@ -664,9 +733,9 @@ export default function OrdonnancementView() {
                   px={4}
                   py={2}
                   borderRadius="lg"
-                  borderColor="#5D2AD0"
-                  color="#5D2AD0"
-                  _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
+                  borderColor="#3B82F6"
+                  color="#3B82F6"
+                  _hover={{ bg: 'rgba(59, 130, 246, 0.08)', borderColor: '#2563EB' }}
                   transition="all 0.2s"
                   onClick={() => setConfirmReplaceImportOpen(false)}
                 >
@@ -678,10 +747,10 @@ export default function OrdonnancementView() {
                   py={2}
                   fontWeight="medium"
                   borderRadius="lg"
-                  bg="#5D2AD0"
+                  bg="#3B82F6"
                   color="white"
-                  boxShadow="0 2px 6px rgba(93, 42, 208, 0.22)"
-                  _hover={{ bg: '#4e23b8', boxShadow: '0 3px 10px rgba(93, 42, 208, 0.3)', transform: 'translateY(-1px)' }}
+                  boxShadow="0 2px 6px rgba(59, 130, 246, 0.22)"
+                  _hover={{ bg: '#2563EB', boxShadow: '0 3px 10px rgba(59, 130, 246, 0.3)', transform: 'translateY(-1px)' }}
                   _active={{ transform: 'translateY(0)' }}
                   transition="all 0.2s"
                   onClick={async () => {

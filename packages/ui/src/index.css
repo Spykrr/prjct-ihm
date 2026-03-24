@@ -10,16 +10,16 @@
   --foreground: oklch(0.145 0 0);
   --card: #ffffff;
   --card-foreground: oklch(0.145 0 0);
-  --primary: #5D2AD0;
+  --primary: #3B82F6;
   --primary-foreground: #ffffff;
   --secondary: oklch(0.95 0.02 280);
-  --secondary-foreground: #1D0D5E;
+  --secondary-foreground: #1E3A8A;
   --muted: #ececf0;
   --muted-foreground: #717182;
-  --accent: #f5f0ff;
-  --accent-foreground: #1D0D5E;
-  --border: rgba(93, 42, 208, 0.15);
-  --sidebar: #5D2AD0;
+  --accent: #eff6ff;
+  --accent-foreground: #1E3A8A;
+  --border: rgba(59, 130, 246, 0.15);
+  --sidebar: #3B82F6;
   --sidebar-foreground: #ffffff;
   --radius: 0.625rem;
 }

@@ -81,7 +81,7 @@ export default function OrganigrammeModal({ isOpen, onClose, instances }: Organi
             gap={3}
           >
             <Flex alignItems="center" gap={3}>
-              <Box color="#5D2AD0" p={1} borderRadius="md" bg="blue.50">
+              <Box color="#3B82F6" p={1} borderRadius="md" bg="blue.50">
                 <Network size={22} />
               </Box>
               <Dialog.Title fontSize="lg" fontWeight="semibold" color="gray.900">
@@ -114,7 +114,7 @@ export default function OrganigrammeModal({ isOpen, onClose, instances }: Organi
           <Dialog.Body flex="1" overflowY="auto" py={4} px={6}>
             {loading ? (
               <Flex justifyContent="center" py={12}>
-                <Spinner size="lg" color="#5D2AD0" />
+                <Spinner size="lg" color="#3B82F6" />
               </Flex>
             ) : instanceNames.length === 0 ? (
               <Text color="gray.500" fontSize="sm">
@@ -279,7 +279,7 @@ function ModuleBlock({ moduleNum, tests, allIds, idMap, onHighlightPrev }: Modul
                     <Button
                       size="xs"
                       variant="ghost"
-                      color="#5D2AD0"
+                      color="#3B82F6"
                       _hover={{ textDecoration: 'underline' }}
                       onClick={(e) => {
                         e.stopPropagation();

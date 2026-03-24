@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Box, Flex, Button, Checkbox, Input, Text, Dialog, Switch, Badge } from '@chakra-ui/react';
-import { Trash2, Pencil, X, Link2, Settings } from 'lucide-react';
+import { Box, Flex, Button, Checkbox, Input, Text, Dialog, Switch, Badge, Portal } from '@chakra-ui/react';
+import { Trash2, Pencil, X, Settings, Link2 } from 'lucide-react';
 import { type RefOption } from '@uptest/core';
 import {
   MATRICE_CORRESPONDANCE,
@@ -24,6 +24,13 @@ interface FormInputRefProps {
 const PAD_5 = (n: number | undefined): string =>
   n != null && !Number.isNaN(n) ? String(Math.max(0, Math.floor(n))).padStart(5, '0') : '';
 
+function normalizeNoAccents(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase();
+}
+
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
     <Text fontSize="xs" fontWeight="medium" color="gray.500" mb={1.5} display="block">
@@ -34,7 +41,12 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 
 type PopupMode = 'general' | 'predecesseur' | 'parametres' | null;
 
-export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdate, onDelete }: FormInputRefProps) {
+export default function FormInputRef({
+  option,
+  siblingOrdreOptions = [],
+  onUpdate,
+  onDelete,
+}: FormInputRefProps) {
   const { showError } = useToast();
   const [popupMode, setPopupMode] = useState<PopupMode>(null);
   const [localEdit, setLocalEdit] = useState<RefOption | null>(null);
@@ -45,13 +57,6 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
   const latestLocalEditRef = useRef<RefOption | null>(null);
   /** Valeur d'ordre groupe à l'ouverture de la popup (pour détecter un changement au moment d'enregistrer) */
   const initialOrdreOptionRef = useRef<number | undefined>(undefined);
-  /** Détails parsés du prédécesseur (mis à jour par effet pour affichage fiable) */
-  const [predecesseurDetails, setPredecesseurDetails] = useState<{
-    instanceName: string;
-    ordreInstance: string;
-    ordreGroupe: string;
-    moduleName: string;
-  }>({ instanceName: '', ordreInstance: '', ordreGroupe: '', moduleName: '' });
 
   const openEditPopup = () => {
     const snapshot = { ...option };
@@ -59,13 +64,13 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
     initialOrdreOptionRef.current = snapshot.ordreOption as number | undefined;
     setPopupMode('general');
   };
-  const openPredecesseurPopup = () => {
-    setLocalEdit({ ...option });
-    setPopupMode('predecesseur');
-  };
   const openParametresPopup = () => {
     setLocalEdit({ ...option });
     setPopupMode('parametres');
+  };
+  const openPredecesseurPopup = () => {
+    setLocalEdit({ ...option });
+    setPopupMode('predecesseur');
   };
   const closeEditPopup = () => {
     if (debounceOrdreRef.current) {
@@ -128,10 +133,36 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
     width: '100%',
     minHeight: '36px',
   };
+  const getPredecesseurValue = (opt: RefOption | null): string => {
+    if (!opt) return '';
+    const row = opt as Record<string, unknown>;
 
-  const getPredecesseurValue = (opt: RefOption | null): string =>
-    opt ? String((opt as Record<string, unknown>).Predecesseur ?? (opt as Record<string, unknown>).predecesseur ?? '').trim() : '';
+    const directKeys = [
+      'Predecesseur',
+      'predecesseur',
+      'Prédécesseur',
+      'prédécesseur',
+      'Predecessor',
+      'predecessor',
+    ];
+    for (const key of directKeys) {
+      const val = row[key];
+      if (val != null && String(val).trim() !== '') {
+        return String(val).trim();
+      }
+    }
+
+    const fallbackKey = Object.keys(row).find((k) => {
+      const normalized = normalizeNoAccents(k);
+      return normalized.includes('predecesseur') || normalized.includes('predecessor');
+    });
+    if (!fallbackKey) return '';
+    const fallbackValue = row[fallbackKey];
+    return fallbackValue != null ? String(fallbackValue).trim() : '';
+  };
   const hasPredecesseur = !!getPredecesseurValue(option);
+  const isEditablePopup = popupMode === 'general' || popupMode === 'parametres';
+
   const hasParams = Array.from({ length: 10 }).some((_, idx) => {
     const key = `Param${idx + 1}` as keyof RefOption;
     const value = option[key];
@@ -158,21 +189,6 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
     }
   }, [popupMode]);
 
-  // Parser le prédécesseur pour afficher les détails (état dédié pour éviter affichage vide)
-  useEffect(() => {
-    if (popupMode !== 'predecesseur' || !localEdit) {
-      setPredecesseurDetails({ instanceName: '', ordreInstance: '', ordreGroupe: '', moduleName: '' });
-      return;
-    }
-    const raw = getPredecesseurValue(localEdit);
-    const parts = raw ? raw.split('##').map((s) => String(s).trim()) : [];
-    setPredecesseurDetails({
-      instanceName: parts[0] ?? '',
-      ordreInstance: parts[1] ?? '',
-      ordreGroupe: parts[2] ?? '',
-      moduleName: parts[3] ?? '',
-    });
-  }, [popupMode, localEdit]);
 
   // Annuler le debounce à la fermeture
   useEffect(() => {
@@ -197,8 +213,25 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
       borderColor="gray.200"
       bg="white"
       mb={3}
-      boxShadow="0 1px 3px rgba(0,0,0,0.04)"
-      _hover={{ boxShadow: '0 4px 12px rgba(0,0,0,0.06)', borderColor: 'gray.300' }}
+      boxShadow="0 4px 14px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.06)"
+      _before={{
+        content: '""',
+        position: 'absolute',
+        left: 1,
+        right: 1,
+        top: 1,
+        height: '10px',
+        borderTopLeftRadius: '0.7rem',
+        borderTopRightRadius: '0.7rem',
+        bg: 'linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 100%)',
+        pointerEvents: 'none',
+      }}
+      position="relative"
+      _hover={{
+        boxShadow: '0 10px 24px rgba(15, 23, 42, 0.14), 0 4px 8px rgba(15, 23, 42, 0.10)',
+        borderColor: 'gray.300',
+        transform: 'translateY(-1px)',
+      }}
       transition="all 0.2s ease"
     >
       <Flex gap={4} alignItems="center" flexWrap="nowrap">
@@ -217,7 +250,7 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
             </Switch.Control>
           </Switch.Root>
           <Badge
-            bg="#5D2AD0"
+            bg="#3B82F6"
             color="white"
             px={2.5}
             py={1}
@@ -255,7 +288,7 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
             color={hasPredecesseur ? 'green.700' : 'gray.500'}
             _hover={{
               bg: hasPredecesseur ? 'green.100' : 'gray.100',
-              color: hasPredecesseur ? 'green.700' : '#5D2AD0',
+              color: hasPredecesseur ? 'green.700' : '#3B82F6',
             }}
             transition="all 0.2s"
             title="Prédécesseur"
@@ -276,7 +309,7 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
             color={hasParams ? 'blue.700' : 'gray.500'}
             _hover={{
               bg: hasParams ? 'blue.100' : 'gray.100',
-              color: hasParams ? 'blue.700' : '#5D2AD0',
+              color: hasParams ? 'blue.700' : '#3B82F6',
             }}
             transition="all 0.2s"
             title="Paramètres"
@@ -297,7 +330,7 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
             color={hasGeneralInfo ? 'yellow.800' : 'gray.500'}
             _hover={{
               bg: hasGeneralInfo ? 'yellow.100' : 'gray.100',
-              color: hasGeneralInfo ? 'yellow.800' : '#5D2AD0',
+              color: hasGeneralInfo ? 'yellow.800' : '#3B82F6',
             }}
             transition="all 0.2s"
             onClick={openEditPopup}
@@ -327,9 +360,10 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
 
       {/* Popup selon le bouton : général+libellé / prédécesseur / paramètres */}
       <Dialog.Root open={popupMode !== null} onOpenChange={(e) => { if (!e.open) closeEditPopup(); }}>
-        <Dialog.Backdrop bg="blackAlpha.600" backdropFilter="blur(4px)" />
-        <Dialog.Positioner>
-          <Dialog.Content
+        <Portal>
+          <Dialog.Backdrop bg="blackAlpha.600" backdropFilter="blur(4px)" />
+          <Dialog.Positioner>
+            <Dialog.Content
             maxW="680px"
             w="100%"
             borderRadius="xl"
@@ -338,7 +372,11 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
             borderWidth="1px"
             borderColor="gray.200"
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+              if (
+                isEditablePopup &&
+                e.key === 'Enter' &&
+                (e.target as HTMLElement).tagName !== 'TEXTAREA'
+              ) {
                 e.preventDefault();
                 saveEditPopup();
               }
@@ -360,7 +398,7 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
                   p={2}
                   borderRadius="lg"
                   bg="blue.50"
-                  color="#5D2AD0"
+                  color="#3B82F6"
                   display="flex"
                   alignItems="center"
                   justifyContent="center"
@@ -372,7 +410,7 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
                 <Box>
                   <Dialog.Title fontSize="md" fontWeight="semibold" color="gray.900">
                     {popupMode === 'general' && "Informations générales et libellé"}
-                    {popupMode === 'predecesseur' && "Prédécesseur"}
+                    {popupMode === 'predecesseur' && "Prédécesseur extrait du CSV"}
                     {popupMode === 'parametres' && "Paramètres du traitement"}
                   </Dialog.Title>
                   {localEdit && popupMode === 'general' && (
@@ -534,42 +572,6 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
                 </Box>
               )}
 
-              {localEdit && popupMode === 'predecesseur' && (
-                <Box>
-                  <FieldLabel>Prédécesseur</FieldLabel>
-                  <Input
-                    size="sm"
-                    h="36px"
-                    borderRadius="lg"
-                    value={getPredecesseurValue(localEdit)}
-                    onChange={(e) => updateLocal('Predecesseur', e.target.value)}
-                    placeholder="Inst01##02600##00240##PTF"
-                  />
-                  <Text fontSize="xs" color="gray.500" mt={1}>
-                    Format&nbsp;: Instance##OrdreInstance##OrdreGroupe##Module
-                  </Text>
-                  <Box mt={4} p={3} borderRadius="lg" borderWidth="1px" borderColor="gray.200" bg="gray.50">
-                    <Text fontSize="xs" fontWeight="semibold" color="gray.600" mb={2}>
-                      Détails du prédécesseur
-                    </Text>
-                    <Flex direction="column" gap={1.5}>
-                      <Text fontSize="sm" color="gray.700">
-                        Nom de l&apos;instance&nbsp;: {predecesseurDetails.instanceName || '—'}
-                      </Text>
-                      <Text fontSize="sm" color="gray.700">
-                        Ordre de l&apos;instance&nbsp;: {predecesseurDetails.ordreInstance || '—'}
-                      </Text>
-                      <Text fontSize="sm" color="gray.700">
-                        Ordre dans groupe&nbsp;: {predecesseurDetails.ordreGroupe || '—'}
-                      </Text>
-                      <Text fontSize="sm" color="gray.700">
-                        Module&nbsp;: {predecesseurDetails.moduleName || '—'}
-                      </Text>
-                    </Flex>
-                  </Box>
-                </Box>
-              )}
-
               {localEdit && popupMode === 'parametres' && (
                 <Box>
                   <Text fontSize="sm" fontWeight="semibold" mb={3} color="gray.800">
@@ -628,6 +630,51 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
                   </Box>
                 </Box>
               )}
+
+              {localEdit && popupMode === 'predecesseur' && (
+                <Box>
+                  <Text fontSize="sm" fontWeight="semibold" color="gray.800" mb={3}>
+                    Valeur brute
+                  </Text>
+                  <Input
+                    size="sm"
+                    h="36px"
+                    borderRadius="lg"
+                    value={getPredecesseurValue(localEdit)}
+                    readOnly
+                    bg="gray.50"
+                  />
+                  <Text fontSize="xs" color="gray.500" mt={1}>
+                    Format attendu : Instance##OrdreInstance##OrdreGroupe##Module
+                  </Text>
+
+                  {(() => {
+                    const raw = getPredecesseurValue(localEdit);
+                    const parts = raw ? raw.split('##').map((s) => String(s).trim()) : [];
+                    return (
+                      <Box mt={4} p={3} borderRadius="lg" borderWidth="1px" borderColor="gray.200" bg="gray.50">
+                        <Text fontSize="xs" fontWeight="semibold" color="gray.600" mb={2}>
+                          Détails
+                        </Text>
+                        <Flex direction="column" gap={1.5}>
+                          <Text fontSize="sm" color="gray.700">
+                            Nom de l&apos;instance&nbsp;: {parts[0] || '—'}
+                          </Text>
+                          <Text fontSize="sm" color="gray.700">
+                            Ordre de l&apos;instance&nbsp;: {parts[1] || '—'}
+                          </Text>
+                          <Text fontSize="sm" color="gray.700">
+                            Ordre dans groupe&nbsp;: {parts[2] || '—'}
+                          </Text>
+                          <Text fontSize="sm" color="gray.700">
+                            Module&nbsp;: {parts[3] || '—'}
+                          </Text>
+                        </Flex>
+                      </Box>
+                    );
+                  })()}
+                </Box>
+              )}
             </Dialog.Body>
             <Dialog.Footer gap={3} display="flex" justifyContent="flex-end" flexWrap="wrap" py={4} px={5} pt={4} pb={6}>
               <Button
@@ -637,40 +684,44 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
                 py={2.5}
                 fontWeight="medium"
                 borderRadius="xl"
-                borderColor="#5D2AD0"
-                color="#5D2AD0"
-                _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
+                borderColor="#3B82F6"
+                color="#3B82F6"
+                _hover={{ bg: 'rgba(59, 130, 246, 0.08)', borderColor: '#2563EB' }}
                 transition="all 0.2s"
                 onClick={closeEditPopup}
               >
-                Annuler
+                {isEditablePopup ? 'Annuler' : 'Fermer'}
               </Button>
-              <Button
-                size="md"
-                px={5}
-                py={2.5}
-                fontWeight="medium"
-                borderRadius="xl"
-                bg="#5D2AD0"
-                color="white"
-                boxShadow="0 2px 8px rgba(93, 42, 208, 0.25)"
-                _hover={{ bg: '#4e23b8', boxShadow: '0 4px 14px rgba(93, 42, 208, 0.35)', transform: 'translateY(-1px)' }}
-                _active={{ transform: 'translateY(0)' }}
-                transition="all 0.2s"
-                onClick={saveEditPopup}
-              >
-                Enregistrer
-              </Button>
+              {isEditablePopup && (
+                <Button
+                  size="md"
+                  px={5}
+                  py={2.5}
+                  fontWeight="medium"
+                  borderRadius="xl"
+                  bg="#3B82F6"
+                  color="white"
+                  boxShadow="0 2px 8px rgba(59, 130, 246, 0.25)"
+                  _hover={{ bg: '#2563EB', boxShadow: '0 4px 14px rgba(59, 130, 246, 0.35)', transform: 'translateY(-1px)' }}
+                  _active={{ transform: 'translateY(0)' }}
+                  transition="all 0.2s"
+                  onClick={saveEditPopup}
+                >
+                  Enregistrer
+                </Button>
+              )}
             </Dialog.Footer>
-          </Dialog.Content>
-        </Dialog.Positioner>
+            </Dialog.Content>
+          </Dialog.Positioner>
+        </Portal>
       </Dialog.Root>
 
       {/* Popup de confirmation : mise à jour des prédécesseurs (changement Ordre groupe) */}
       <Dialog.Root open={confirmOrdreMergeOpen} onOpenChange={(e) => !e.open && setConfirmOrdreMergeOpen(false)}>
-        <Dialog.Backdrop bg="blackAlpha.600" backdropFilter="blur(4px)" />
-        <Dialog.Positioner>
-          <Dialog.Content
+        <Portal>
+          <Dialog.Backdrop bg="blackAlpha.600" backdropFilter="blur(4px)" />
+          <Dialog.Positioner>
+            <Dialog.Content
             maxW="420px"
             w="100%"
             borderRadius="xl"
@@ -710,9 +761,9 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
                 py={2}
                 fontWeight="medium"
                 borderRadius="lg"
-                borderColor="#5D2AD0"
-                color="#5D2AD0"
-                _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
+                borderColor="#3B82F6"
+                color="#3B82F6"
+                _hover={{ bg: 'rgba(59, 130, 246, 0.08)', borderColor: '#2563EB' }}
                 transition="all 0.2s"
                 onClick={() => setConfirmOrdreMergeOpen(false)}
               >
@@ -724,10 +775,10 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
                 py={2}
                 fontWeight="medium"
                 borderRadius="lg"
-                bg="#5D2AD0"
+                bg="#3B82F6"
                 color="white"
-                boxShadow="0 2px 6px rgba(93, 42, 208, 0.25)"
-                _hover={{ bg: '#4e23b8', boxShadow: '0 3px 10px rgba(93, 42, 208, 0.3)', transform: 'translateY(-1px)' }}
+                boxShadow="0 2px 6px rgba(59, 130, 246, 0.25)"
+                _hover={{ bg: '#2563EB', boxShadow: '0 3px 10px rgba(59, 130, 246, 0.3)', transform: 'translateY(-1px)' }}
                 _active={{ transform: 'translateY(0)' }}
                 transition="all 0.2s"
                 onClick={confirmOrdreMergeAndSave}
@@ -735,15 +786,17 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
                 Enregistrer
               </Button>
             </Dialog.Footer>
-          </Dialog.Content>
-        </Dialog.Positioner>
+            </Dialog.Content>
+          </Dialog.Positioner>
+        </Portal>
       </Dialog.Root>
 
       {/* Popup de confirmation de suppression */}
       <Dialog.Root open={confirmDeleteOpen} onOpenChange={(e) => !e.open && setConfirmDeleteOpen(false)}>
-        <Dialog.Backdrop bg="blackAlpha.600" backdropFilter="blur(4px)" />
-        <Dialog.Positioner>
-          <Dialog.Content
+        <Portal>
+          <Dialog.Backdrop bg="blackAlpha.600" backdropFilter="blur(4px)" />
+          <Dialog.Positioner>
+            <Dialog.Content
             maxW="420px"
             w="100%"
             borderRadius="xl"
@@ -784,9 +837,9 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
                 py={2}
                 fontWeight="medium"
                 borderRadius="lg"
-                borderColor="#5D2AD0"
-                color="#5D2AD0"
-                _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
+                borderColor="#3B82F6"
+                color="#3B82F6"
+                _hover={{ bg: 'rgba(59, 130, 246, 0.08)', borderColor: '#2563EB' }}
                 transition="all 0.2s"
                 onClick={() => setConfirmDeleteOpen(false)}
               >
@@ -812,8 +865,9 @@ export default function FormInputRef({ option, siblingOrdreOptions = [], onUpdat
                 Supprimer
               </Button>
             </Dialog.Footer>
-          </Dialog.Content>
-        </Dialog.Positioner>
+            </Dialog.Content>
+          </Dialog.Positioner>
+        </Portal>
       </Dialog.Root>
     </Box>
   );

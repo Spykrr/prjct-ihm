@@ -100,6 +100,16 @@ function buildOptionToLibelle(screens: ParsedScreen[]): Record<string, string> {
   return map;
 }
 
+function normalizeScreenTitleKey(input: unknown): string {
+  return String(input ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export default function ModalContent({
   isOpen,
   onClose,
@@ -114,6 +124,7 @@ export default function ModalContent({
   onSave,
 }: ModalContentProps) {
   const [editedRow, setEditedRow] = useState<Record<string, unknown>>({});
+  const [editedFieldNotes, setEditedFieldNotes] = useState<Record<string, string>>({});
   const [showBoutonChoices, setShowBoutonChoices] = useState(false);
   const [showChampChoices, setShowChampChoices] = useState(false);
   const [prevScreenId, setPrevScreenId] = useState<string | null>(null);
@@ -123,6 +134,7 @@ export default function ModalContent({
   if (screen && isOpen && screen.id !== prevScreenId) {
     setPrevScreenId(screen.id);
     setEditedRow({ ...screen.rawRow });
+    setEditedFieldNotes({ ...(screen.fieldNotes ?? {}) });
   }
 
   const updateKey = (key: string, value: string) => {
@@ -130,7 +142,7 @@ export default function ModalContent({
   };
 
   const handleSave = () => {
-    onSave({ ...screen, rawRow: editedRow });
+    onSave({ ...screen, rawRow: editedRow, fieldNotes: editedFieldNotes });
     onClose();
   };
 
@@ -169,10 +181,10 @@ export default function ModalContent({
   };
 
   const titleIcons: Record<ModalType, React.ReactNode> = {
-    champs: <Box color="#5D2AD0" p={2} borderRadius="lg" bg="blue.50"><LayoutList size={22} strokeWidth={2} /></Box>,
-    boutons: <Box color="#5D2AD0" p={2} borderRadius="lg" bg="blue.50"><MousePointer size={22} strokeWidth={2} /></Box>,
-    get: <Box color="#5D2AD0" p={2} borderRadius="lg" bg="blue.50"><Link size={22} strokeWidth={2} /></Box>,
-    msgKOPrevu: <Box color="#5D2AD0" p={2} borderRadius="lg" bg="blue.50"><MessageSquare size={22} strokeWidth={2} /></Box>,
+    champs: <Box color="#3B82F6" p={2} borderRadius="lg" bg="blue.50"><LayoutList size={22} strokeWidth={2} /></Box>,
+    boutons: <Box color="#3B82F6" p={2} borderRadius="lg" bg="blue.50"><MousePointer size={22} strokeWidth={2} /></Box>,
+    get: <Box color="#3B82F6" p={2} borderRadius="lg" bg="blue.50"><Link size={22} strokeWidth={2} /></Box>,
+    msgKOPrevu: <Box color="#3B82F6" p={2} borderRadius="lg" bg="blue.50"><MessageSquare size={22} strokeWidth={2} /></Box>,
   };
 
   const footerButtons = (
@@ -184,9 +196,9 @@ export default function ModalContent({
         py={2.5}
         fontWeight="medium"
         borderRadius="xl"
-        borderColor="#5D2AD0"
-        color="#5D2AD0"
-        _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
+        borderColor="#3B82F6"
+        color="#3B82F6"
+        _hover={{ bg: 'rgba(59, 130, 246, 0.08)', borderColor: '#2563EB' }}
         transition="all 0.2s"
         onClick={onClose}
       >
@@ -198,10 +210,10 @@ export default function ModalContent({
         py={2.5}
         fontWeight="medium"
         borderRadius="xl"
-        bg="#5D2AD0"
+        bg="#3B82F6"
         color="white"
-        boxShadow="0 2px 8px rgba(93, 42, 208, 0.25)"
-        _hover={{ bg: '#4e23b8', boxShadow: '0 4px 14px rgba(93, 42, 208, 0.35)', transform: 'translateY(-1px)' }}
+        boxShadow="0 2px 8px rgba(59, 130, 246, 0.25)"
+        _hover={{ bg: '#2563EB', boxShadow: '0 4px 14px rgba(59, 130, 246, 0.35)', transform: 'translateY(-1px)' }}
         _active={{ transform: 'translateY(0)' }}
         transition="all 0.2s"
         onClick={handleSave}
@@ -210,6 +222,36 @@ export default function ModalContent({
       </Button>
     </Flex>
   );
+
+  const initFieldNotesForScreen =
+    workbook && currentSheet
+      ? (workbook.initFieldNotesBySheet?.[currentSheet]?.[normalizeScreenTitleKey(screen.title)] ?? {})
+      : {};
+  const headerFieldNotesForSheet =
+    workbook && currentSheet
+      ? (workbook.headerFieldNotesBySheet?.[currentSheet] ?? {})
+      : {};
+  const defaultInitFieldNotesForSheet =
+    workbook && currentSheet
+      ? (workbook.defaultInitFieldNotesBySheet?.[currentSheet] ?? {})
+      : {};
+  const showFieldNotes = !(_isDefinition || extractMode === 'init');
+
+  const getFieldNoteResolved = (fieldKey: string): string => {
+    const edited = (editedFieldNotes[fieldKey] ?? '').trim();
+    if (edited) return edited;
+    const val =
+      (screen.fieldNotes ?? {})[fieldKey] ??
+      initFieldNotesForScreen[fieldKey] ??
+      headerFieldNotesForSheet[fieldKey] ??
+      defaultInitFieldNotesForSheet[fieldKey];
+    return typeof val === 'string' ? val.trim() : '';
+  };
+
+  const getFieldNote = (fieldKey: string): string => {
+    if (!showFieldNotes) return '';
+    return getFieldNoteResolved(fieldKey);
+  };
 
   if (type === 'champs') {
     const isTestMode = extractMode === 'test';
@@ -266,6 +308,19 @@ export default function ModalContent({
                       <Text fontSize="sm" color="gray.700" w="78px" flexShrink={0}>
                         Champ {r.idx}:
                       </Text>
+                      {getFieldNote(r.key) && (
+                        <Text
+                          fontSize="sm"
+                          color="blue.600"
+                          fontStyle="italic"
+                          maxW="320px"
+                          lineClamp={2}
+                          title={getFieldNote(r.key)}
+                          flexShrink={0}
+                        >
+                          ({getFieldNote(r.key)})
+                        </Text>
+                      )}
                       <Input
                         value={r.label}
                         onChange={(e) => {
@@ -279,8 +334,8 @@ export default function ModalContent({
                         borderColor="gray.200"
                         bg="white"
                         _focus={{
-                          borderColor: '#5D2AD0',
-                          boxShadow: '0 0 0 2px rgba(93, 42, 208, 0.12)',
+                          borderColor: '#3B82F6',
+                          boxShadow: '0 0 0 2px rgba(59, 130, 246, 0.12)',
                         }}
                         _placeholder={{ color: 'gray.400' }}
                       />
@@ -304,13 +359,38 @@ export default function ModalContent({
                         borderColor="gray.200"
                         bg="white"
                         _focus={{
-                          borderColor: '#5D2AD0',
-                          boxShadow: '0 0 0 2px rgba(93, 42, 208, 0.12)',
+                          borderColor: '#3B82F6',
+                          boxShadow: '0 0 0 2px rgba(59, 130, 246, 0.12)',
                         }}
                         _placeholder={{ color: 'gray.400' }}
                       />
                     </Flex>
 
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      p={2}
+                      minW="auto"
+                      h="auto"
+                      borderRadius="lg"
+                      color={getFieldNoteResolved(r.key) ? 'blue.600' : 'gray.500'}
+                      _hover={{ bg: 'blue.50', color: 'blue.700' }}
+                      onClick={() => {
+                        const current = getFieldNoteResolved(r.key);
+                        const next = window.prompt(`Note pour Champ ${r.idx} :`, current);
+                        if (next == null) return;
+                        const trimmed = next.trim();
+                        setEditedFieldNotes((prev) => {
+                          const out = { ...prev };
+                          if (!trimmed) delete out[r.key];
+                          else out[r.key] = trimmed;
+                          return out;
+                        });
+                      }}
+                      title="Ajouter / modifier la note du champ"
+                    >
+                      <MessageSquare size={16} />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -337,9 +417,9 @@ export default function ModalContent({
                 minW="auto"
                 h="auto"
                 borderRadius="lg"
-                borderColor="#5D2AD0"
-                color="#5D2AD0"
-                _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
+                borderColor="#3B82F6"
+                color="#3B82F6"
+                _hover={{ bg: 'rgba(59, 130, 246, 0.08)', borderColor: '#2563EB' }}
                 onClick={() => setDefinitionChampVisibleCount((c) => Math.min(rows.length, (c || 1) + 1))}
                 disabled={(definitionChampVisibleCount || 1) >= rows.length}
                 title="Ajouter un champ"
@@ -400,6 +480,7 @@ export default function ModalContent({
             <ChampFieldRow
               key={item.key}
               label={item.label}
+              note={getFieldNote(item.key)}
               value={item.isTestMode ? item.value : (item.option as string)}
               displayValue={
                 item.isTestMode
@@ -428,7 +509,7 @@ export default function ModalContent({
               gap={2}
               onClick={() => setShowChampChoices(true)}
               borderColor="gray.300"
-              _hover={{ bg: 'gray.50', borderColor: '#5D2AD0' }}
+              _hover={{ bg: 'gray.50', borderColor: '#3B82F6' }}
             >
               <List size={14} /> Choisir un champ de l&apos;écran
             </Button>
@@ -480,7 +561,7 @@ export default function ModalContent({
                           fontWeight="normal"
                           borderRadius="md"
                           borderColor="gray.200"
-                          _hover={{ bg: 'blue.50', borderColor: '#5D2AD0' }}
+                          _hover={{ bg: 'blue.50', borderColor: '#3B82F6' }}
                           onClick={() => {
                             const emptyKey = CHAMP_STD_KEYS.find((k) => !editedRow[k] || !String(editedRow[k]).trim());
                             if (emptyKey) {
@@ -562,8 +643,8 @@ export default function ModalContent({
                       borderColor="gray.200"
                       bg="white"
                       _focus={{
-                        borderColor: '#5D2AD0',
-                        boxShadow: '0 0 0 2px rgba(93, 42, 208, 0.12)',
+                        borderColor: '#3B82F6',
+                        boxShadow: '0 0 0 2px rgba(59, 130, 246, 0.12)',
                       }}
                       _placeholder={{ color: 'gray.400' }}
                     />
@@ -586,8 +667,8 @@ export default function ModalContent({
                       borderColor="gray.200"
                       bg="white"
                       _focus={{
-                        borderColor: '#5D2AD0',
-                        boxShadow: '0 0 0 2px rgba(93, 42, 208, 0.12)',
+                        borderColor: '#3B82F6',
+                        boxShadow: '0 0 0 2px rgba(59, 130, 246, 0.12)',
                       }}
                       _placeholder={{ color: 'gray.400' }}
                     />
@@ -618,9 +699,9 @@ export default function ModalContent({
                 minW="auto"
                 h="auto"
                 borderRadius="lg"
-                borderColor="#5D2AD0"
-                color="#5D2AD0"
-                _hover={{ bg: 'rgba(93, 42, 208, 0.06)', borderColor: '#4e23b8' }}
+                borderColor="#3B82F6"
+                color="#3B82F6"
+                _hover={{ bg: 'rgba(59, 130, 246, 0.08)', borderColor: '#2563EB' }}
                 onClick={() => setDefinitionBoutonVisibleCount((c) => Math.min(rows.length, (c || 1) + 1))}
                 disabled={(definitionBoutonVisibleCount || 1) >= rows.length}
                 title="Ajouter un bouton"
@@ -670,7 +751,7 @@ export default function ModalContent({
             py={2}
             borderRadius="lg"
             borderColor="gray.200"
-            _hover={{ bg: 'gray.50', borderColor: '#5D2AD0' }}
+            _hover={{ bg: 'gray.50', borderColor: '#3B82F6' }}
             onClick={() => setShowBoutonChoices(true)}
           >
             <List size={16} strokeWidth={2} /> Choisir un bouton de l&apos;écran
@@ -724,7 +805,7 @@ export default function ModalContent({
                           py={2.5}
                           borderRadius="lg"
                           borderColor="gray.200"
-                          _hover={{ bg: 'blue.50', borderColor: '#5D2AD0' }}
+                          _hover={{ bg: 'blue.50', borderColor: '#3B82F6' }}
                           onClick={() => {
                             const emptyKey = BOUTON_STD_KEYS.find((k) => !editedRow[k] || !String(editedRow[k]).trim());
                             if (emptyKey) {
