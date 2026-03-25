@@ -676,12 +676,37 @@ export default function ScreensView() {
                 <Box key={sheetName}>
                   <Box
                     p={3}
+                    position="relative"
                     bg={currentSheet === sheetName ? '#e8f0fe' : 'white'}
                     borderWidth="1px"
                     borderColor={currentSheet === sheetName ? '#3B82F6' : 'gray.200'}
-                    borderRadius="lg"
+                    borderRadius="xl"
+                    boxShadow={
+                      currentSheet === sheetName
+                        ? '0 10px 24px rgba(59, 130, 246, 0.18), 0 4px 10px rgba(59, 130, 246, 0.12)'
+                        : '0 6px 16px rgba(15, 23, 42, 0.10), 0 2px 5px rgba(15, 23, 42, 0.06)'
+                    }
+                    _before={{
+                      content: '""',
+                      position: 'absolute',
+                      left: 1,
+                      right: 1,
+                      top: 1,
+                      height: '9px',
+                      borderTopLeftRadius: '0.75rem',
+                      borderTopRightRadius: '0.75rem',
+                      bg: 'linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0) 100%)',
+                      pointerEvents: 'none',
+                    }}
                     cursor="pointer"
-                    _hover={{ borderColor: 'gray.300' }}
+                    _hover={{
+                      borderColor: currentSheet === sheetName ? '#2563EB' : 'gray.300',
+                      boxShadow: currentSheet === sheetName
+                        ? '0 14px 28px rgba(59, 130, 246, 0.24), 0 5px 12px rgba(59, 130, 246, 0.16)'
+                        : '0 10px 22px rgba(15, 23, 42, 0.14), 0 4px 9px rgba(15, 23, 42, 0.09)',
+                      transform: 'translateY(-1px)',
+                    }}
+                    transition="all 0.2s ease"
                     onClick={() => handleSelectSheet(sheetName)}
                   >
                     <Flex alignItems="flex-start" justifyContent="space-between" gap={1}>
@@ -725,16 +750,32 @@ export default function ScreensView() {
                       {getTreeNodesForSheet(sheetName).map((node) => (
                         <Flex
                           key={node}
+                          position="relative"
                           alignItems="center"
                           justifyContent="space-between"
                           gap={2}
                           py={2}
                           px={2}
-                          borderRadius="md"
+                          borderRadius="lg"
                           cursor="pointer"
-                          bg={currentSheet === sheetName && selectedNode === node ? '#ede9fe' : 'transparent'}
+                          borderWidth="1px"
+                          borderColor={currentSheet === sheetName && selectedNode === node ? '#3B82F6' : 'transparent'}
+                          bg={currentSheet === sheetName && selectedNode === node ? '#ede9fe' : 'white'}
                           color={currentSheet === sheetName && selectedNode === node ? '#3B82F6' : 'gray.700'}
-                          _hover={{ bg: currentSheet === sheetName && selectedNode === node ? '#ede9fe' : 'gray.100' }}
+                          boxShadow={
+                            currentSheet === sheetName && selectedNode === node
+                              ? '0 8px 18px rgba(59, 130, 246, 0.18), 0 3px 8px rgba(59, 130, 246, 0.12)'
+                              : '0 3px 10px rgba(15, 23, 42, 0.08)'
+                          }
+                          _hover={{
+                            bg: currentSheet === sheetName && selectedNode === node ? '#ede9fe' : 'gray.50',
+                            borderColor: currentSheet === sheetName && selectedNode === node ? '#2563EB' : 'gray.200',
+                            boxShadow: currentSheet === sheetName && selectedNode === node
+                              ? '0 10px 20px rgba(59, 130, 246, 0.22), 0 4px 10px rgba(59, 130, 246, 0.15)'
+                              : '0 8px 16px rgba(15, 23, 42, 0.12)',
+                            transform: 'translateY(-1px)',
+                          }}
+                          transition="all 0.2s ease"
                           onClick={() => {
                             if (currentSheet !== sheetName) handleSelectSheet(sheetName);
                             selectNode(node);
@@ -991,28 +1032,34 @@ export default function ScreensView() {
                     {filteredScreens.map((screen) => (
                       <Box
                         key={screen.id}
+                        position="relative"
                         bg="white"
                         borderWidth="1px"
-                        borderRadius="lg"
+                        borderRadius="2xl"
                         p={4}
-                        _hover={{ borderColor: 'gray.400' }}
-                        transition="border-color 0.2s"
-                        borderColor={
-                          selectedScreens.includes(screen.id) ? '#3B82F6' : undefined
-                        }
-                        bgColor={
-                          selectedScreens.includes(screen.id) ? '#e8f0fe' : undefined
-                        }
+                        borderColor="gray.200"
+                        boxShadow="0 6px 18px rgba(15, 23, 42, 0.10), 0 2px 6px rgba(15, 23, 42, 0.06)"
+                        _before={{
+                          content: '""',
+                          position: 'absolute',
+                          left: 1,
+                          right: 1,
+                          top: 1,
+                          height: '10px',
+                          borderTopLeftRadius: '0.9rem',
+                          borderTopRightRadius: '0.9rem',
+                          bg: 'linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 100%)',
+                          pointerEvents: 'none',
+                        }}
+                        _hover={{
+                          borderColor: 'gray.300',
+                          boxShadow: '0 12px 28px rgba(15, 23, 42, 0.14), 0 4px 10px rgba(15, 23, 42, 0.10)',
+                          transform: 'translateY(-1px)',
+                        }}
+                        transition="all 0.2s ease"
                       >
                         <Flex alignItems="center" justifyContent="space-between">
                           <Flex alignItems="center" gap={4} flex="1">
-                            <Checkbox.Root
-                              checked={selectedScreens.includes(screen.id)}
-                              onCheckedChange={() => toggleSelectScreen(screen.id)}
-                            >
-                              <Checkbox.HiddenInput />
-                              <Checkbox.Control />
-                            </Checkbox.Root>
                             <Text
                               fontSize="sm"
                               fontWeight="semibold"

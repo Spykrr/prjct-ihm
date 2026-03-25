@@ -244,7 +244,7 @@ export default function ModalContent({
       (screen.fieldNotes ?? {})[fieldKey] ??
       initFieldNotesForScreen[fieldKey] ??
       headerFieldNotesForSheet[fieldKey] ??
-      defaultInitFieldNotesForSheet[fieldKey];
+      '';
     return typeof val === 'string' ? val.trim() : '';
   };
 
@@ -304,10 +304,30 @@ export default function ModalContent({
             >
               {visibleRows.map((r) => (
                   <Flex key={r.key} alignItems="center" gap={5}>
-                    <Flex flex="1" alignItems="center" gap={3} minW={0}>
-                      <Text fontSize="sm" color="gray.700" w="78px" flexShrink={0}>
-                        Champ {r.idx}:
-                      </Text>
+                    <Flex flex="1" direction="column" gap={1} minW={0}>
+                      <Flex alignItems="center" gap={3} minW={0}>
+                        <Text fontSize="sm" color="gray.700" w="78px" flexShrink={0}>
+                          Champ {r.idx}:
+                        </Text>
+                        <Input
+                          value={r.label}
+                          onChange={(e) => {
+                            const nextLabel = e.target.value;
+                            const next = nextLabel || r.option ? `${nextLabel}##${r.option}` : '';
+                            updateKey(r.key, next);
+                          }}
+                          placeholder="(Non utilisé)"
+                          size="sm"
+                          borderRadius="full"
+                          borderColor="gray.200"
+                          bg="white"
+                          _focus={{
+                            borderColor: '#3B82F6',
+                            boxShadow: '0 0 0 2px rgba(59, 130, 246, 0.12)',
+                          }}
+                          _placeholder={{ color: 'gray.400' }}
+                        />
+                      </Flex>
                       {getFieldNote(r.key) && (
                         <Text
                           fontSize="sm"
@@ -316,29 +336,10 @@ export default function ModalContent({
                           maxW="320px"
                           lineClamp={2}
                           title={getFieldNote(r.key)}
-                          flexShrink={0}
                         >
-                          ({getFieldNote(r.key)})
+                          {getFieldNote(r.key)}
                         </Text>
                       )}
-                      <Input
-                        value={r.label}
-                        onChange={(e) => {
-                          const nextLabel = e.target.value;
-                          const next = nextLabel || r.option ? `${nextLabel}##${r.option}` : '';
-                          updateKey(r.key, next);
-                        }}
-                        placeholder="(Non utilisé)"
-                        size="sm"
-                        borderRadius="full"
-                        borderColor="gray.200"
-                        bg="white"
-                        _focus={{
-                          borderColor: '#3B82F6',
-                          boxShadow: '0 0 0 2px rgba(59, 130, 246, 0.12)',
-                        }}
-                        _placeholder={{ color: 'gray.400' }}
-                      />
                     </Flex>
 
                     <Flex flex="1" alignItems="center" gap={3} minW={0}>
@@ -366,31 +367,6 @@ export default function ModalContent({
                       />
                     </Flex>
 
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      p={2}
-                      minW="auto"
-                      h="auto"
-                      borderRadius="lg"
-                      color={getFieldNoteResolved(r.key) ? 'blue.600' : 'gray.500'}
-                      _hover={{ bg: 'blue.50', color: 'blue.700' }}
-                      onClick={() => {
-                        const current = getFieldNoteResolved(r.key);
-                        const next = window.prompt(`Note pour Champ ${r.idx} :`, current);
-                        if (next == null) return;
-                        const trimmed = next.trim();
-                        setEditedFieldNotes((prev) => {
-                          const out = { ...prev };
-                          if (!trimmed) delete out[r.key];
-                          else out[r.key] = trimmed;
-                          return out;
-                        });
-                      }}
-                      title="Ajouter / modifier la note du champ"
-                    >
-                      <MessageSquare size={16} />
-                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
