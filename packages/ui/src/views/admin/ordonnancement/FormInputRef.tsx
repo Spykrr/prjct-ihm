@@ -15,8 +15,6 @@ const PAD_ORDRE_GROUPE = 3;
 
 interface FormInputRefProps {
   option: RefOption;
-  /** Valeurs ordreOption des autres options du même groupe (pour vérifier les doublons) */
-  siblingOrdreOptions?: number[];
   onUpdate: (opt: RefOption) => void;
   onDelete: () => void;
 }
@@ -43,7 +41,6 @@ type PopupMode = 'general' | 'predecesseur' | 'parametres' | null;
 
 export default function FormInputRef({
   option,
-  siblingOrdreOptions = [],
   onUpdate,
   onDelete,
 }: FormInputRefProps) {
@@ -85,9 +82,7 @@ export default function FormInputRef({
   };
 
   const validateOrdreGroupe = (num: number): boolean => {
-    if (num < MIN_ORDRE_GROUPE || num > MAX_ORDRE_GROUPE) return false;
-    if (siblingOrdreOptions.includes(num)) return false;
-    return true;
+    return !(num < MIN_ORDRE_GROUPE || num > MAX_ORDRE_GROUPE);
   };
 
   const saveEditPopup = () => {
@@ -97,8 +92,6 @@ export default function FormInputRef({
     if (!validateOrdreGroupe(num)) {
       if (num < MIN_ORDRE_GROUPE || num > MAX_ORDRE_GROUPE) {
         showError(`Ordre groupe doit être entre ${MIN_ORDRE_GROUPE} et ${MAX_ORDRE_GROUPE}.`);
-      } else {
-        showError('Cette valeur d\'ordre groupe est déjà utilisée par une autre option du groupe.');
       }
       return;
     }
@@ -517,10 +510,6 @@ export default function FormInputRef({
                             const num = digits === '' ? 0 : parseInt(digits, 10);
                             if (digits !== '' && (num < MIN_ORDRE_GROUPE || num > MAX_ORDRE_GROUPE)) {
                               showError(`Ordre groupe doit être entre ${MIN_ORDRE_GROUPE} et ${MAX_ORDRE_GROUPE}.`);
-                              return;
-                            }
-                            if (digits !== '' && siblingOrdreOptions.includes(num)) {
-                              showError('Cette valeur d\'ordre groupe est déjà utilisée par une autre option du groupe.');
                               return;
                             }
                             const nextInput = digits === '' ? '' : digits;

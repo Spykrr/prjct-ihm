@@ -1,6 +1,49 @@
 /**
  * Utilitaire pour importer un fichier CSV.
  */
+function toArrayBufferFromIpcPayload(payload: unknown): ArrayBuffer | null {
+  if (payload == null) return null;
+  if (payload instanceof ArrayBuffer) return payload;
+
+  if (ArrayBuffer.isView(payload)) {
+    const view = payload as ArrayBufferView;
+    // Copie explicite vers un ArrayBuffer "pur" (evite le cas SharedArrayBuffer en typings TS).
+    const copied = new Uint8Array(view.byteLength);
+    copied.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+    return copied.buffer;
+  }
+
+  if (typeof payload === 'object') {
+    const maybeBufferLike = payload as { type?: unknown; data?: unknown; buffer?: unknown; byteOffset?: unknown; byteLength?: unknown };
+
+    if (
+      maybeBufferLike.type === 'Buffer' &&
+      Array.isArray(maybeBufferLike.data) &&
+      maybeBufferLike.data.every((n) => typeof n === 'number')
+    ) {
+      const u8 = Uint8Array.from(maybeBufferLike.data as number[]);
+      return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
+    }
+
+    if (maybeBufferLike.buffer instanceof ArrayBuffer) {
+      const byteOffset = typeof maybeBufferLike.byteOffset === 'number' ? maybeBufferLike.byteOffset : 0;
+      const byteLength = typeof maybeBufferLike.byteLength === 'number'
+        ? maybeBufferLike.byteLength
+        : maybeBufferLike.buffer.byteLength - byteOffset;
+      return maybeBufferLike.buffer.slice(byteOffset, byteOffset + byteLength);
+    }
+  }
+
+  return null;
+}
+
+function decodeTextFromIpcPayload(payload: unknown): string {
+  if (typeof payload === 'string') return payload;
+  const ab = toArrayBufferFromIpcPayload(payload);
+  if (ab) return new TextDecoder('utf-8').decode(ab);
+  return String(payload ?? '');
+}
+
 export async function openCsvFile(): Promise<{ text: string; fileName: string } | null> {
   const win = typeof window !== 'undefined' ? window : null;
   const electronAPI = win && (win as unknown as { electronAPI?: { openFileDialog: (opts?: unknown) => Promise<{ path: string; buffer: Buffer } | null> } }).electronAPI;
@@ -11,19 +54,7 @@ export async function openCsvFile(): Promise<{ text: string; fileName: string } 
       title: 'Importer un fichier CSV référentiel',
     });
     if (result?.buffer) {
-      const buf = result.buffer;
-      let text: string;
-      if (typeof buf === 'string') {
-        text = buf;
-      } else if (typeof (buf as { toString?: (enc?: string) => string }).toString === 'function') {
-        text = (buf as { toString: (enc?: string) => string }).toString('utf-8');
-      } else if (buf instanceof ArrayBuffer) {
-        text = new TextDecoder('utf-8').decode(buf);
-      } else {
-        const arr = buf as Uint8Array | { buffer: ArrayBuffer };
-        const ab = arr instanceof Uint8Array ? arr.buffer : (arr as { buffer: ArrayBuffer }).buffer;
-        text = new TextDecoder('utf-8').decode(ab);
-      }
+      const text = decodeTextFromIpcPayload(result.buffer);
       const fileName = result.path?.split(/[/\\]/).pop() ?? 'referentiel.csv';
       return { text, fileName };
     }
@@ -65,11 +96,8 @@ export async function openExcelFile(): Promise<{ buffer: ArrayBuffer; fileName: 
       title: 'Importer un fichier Excel',
     });
     if (result?.buffer) {
-      const buf = result.buffer;
-      const buffer: ArrayBuffer =
-        buf instanceof ArrayBuffer
-          ? buf
-          : (buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer);
+      const buffer = toArrayBufferFromIpcPayload(result.buffer);
+      if (!buffer) return null;
       const fileName = result.path?.split(/[/\\]/).pop() ?? 'import.xlsx';
       return { buffer, fileName };
     }

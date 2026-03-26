@@ -96,17 +96,72 @@ ipcMain.handle('generate-csv-and-run', async (event, { nomFichier, feuille, exce
     const line = `O;Inst01;00500;${nomSansExtension};130;${feuille};N;;;;;;;`;
     fs.writeFileSync(csvPath, header + '\n' + line + '\n', 'utf-8');
 
-    const env = { ...process.env, PYTHONIOENCODING: 'utf-8' };
-    const child = spawn(batPath, [excelPath], { shell: true, env });
+    if (!fs.existsSync(batPath)) {
+      return { success: false, error: `Fichier .bat introuvable: ${batPath}` };
+    }
+
+    const logPath = path.join(app.getAppPath(), 'upTest_log.txt');
+    const appendLog = (line) => {
+      try {
+        fs.appendFileSync(logPath, `${new Date().toISOString()} ${line}\n`, 'utf-8');
+      } catch {
+        // ignore
+      }
+    };
+
+    const env = {
+      ...process.env,
+      PYTHONIOENCODING: 'utf-8',
+      UPTEST_EXCEL_TEMP: excelPath,
+      UPTEST_REF_CSV_TEMP: csvPath,
+    };
+    // Contrat d'execution: le .bat reçoit le chemin du CSV référentiel temporaire.
+    const child = spawn(batPath, [csvPath], { shell: true, env });
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout?.on('data', (chunk) => {
+      stdout += String(chunk ?? '');
+    });
+    child.stderr?.on('data', (chunk) => {
+      stderr += String(chunk ?? '');
+    });
 
     return new Promise((resolve) => {
+      child.on('error', (err) => {
+        appendLog(`[ERROR] spawn failed: ${err instanceof Error ? err.message : String(err)}`);
+        resolve({
+          success: false,
+          code: -1,
+          error: err instanceof Error ? err.message : String(err),
+          stdout: stdout.trim(),
+          stderr: stderr.trim(),
+        });
+      });
       child.on('close', (code) => {
+        appendLog(`[EXIT] code=${code}`);
+        if (stdout.trim()) appendLog(`[STDOUT] ${stdout.trim()}`);
+        if (stderr.trim()) appendLog(`[STDERR] ${stderr.trim()}`);
+        const mergedLogs = `${stdout}\n${stderr}`.toLowerCase();
+        const isPlaceholderRun =
+          mergedLogs.includes('commande robot non configuree') ||
+          mergedLogs.includes('aucun runner reel configure') ||
+          mergedLogs.includes('execution par defaut terminee');
         try {
           const tempFiles = fs.readdirSync(testsDir).filter(f => f.startsWith(config.SUFFIX_TEST_FILES_TEMP));
           tempFiles.forEach(f => fs.unlinkSync(path.join(testsDir, f)));
           if (fs.existsSync(refLogDir)) fs.rmSync(refLogDir, { recursive: true });
         } catch (e) { /* ignore */ }
-        resolve({ success: code === 0, code });
+        resolve({
+          success: code === 0 && !isPlaceholderRun,
+          code,
+          stdout: stdout.trim(),
+          stderr: stderr.trim(),
+          error:
+            isPlaceholderRun
+              ? "Runner robot non configuré: aucun test réel n'a été exécuté."
+              : (code === 0 ? undefined : (stderr.trim() || stdout.trim() || `Le processus s'est terminé avec le code ${code}.`)),
+        });
       });
     });
   } catch (err) {

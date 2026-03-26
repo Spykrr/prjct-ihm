@@ -1,0 +1,70 @@
+2026-03-26T16:08:31.268Z [EXIT] code=0
+2026-03-26T16:08:31.269Z [STDOUT] [Uptest-Core] START - ref csv: "C:\Users\othma\uptest-v2\ref_and_log_temp\referentiel_temp_1774541311130.csv"
+[Uptest-Core] INFO: excel temp: "C:\Users\othma\uptest-v2\output-matrices\_temp_AUT.xlsx"
+[Uptest-Core] INFO: Runner detecte: "C:\Users\othma\uptest-v2\Uptest-Core-Runner.bat"
+[Uptest-Core-Runner] START - ref csv: "C:\Users\othma\uptest-v2\ref_and_log_temp\referentiel_temp_1774541311130.csv"
+[Uptest-Core-Runner] INFO: Runner reel detecte: "C:\Users\othma\uptest-v2\Uptest-Core-RealRunner.bat"
+[Uptest-Core-RealRunner] ERROR: Commande robot non configuree.
+[Uptest-Core-RealRunner] INFO: REF_CSV=C:\Users\othma\uptest-v2\ref_and_log_temp\referentiel_temp_1774541311130.csv
+[Uptest-Core-RealRunner] INFO: EXCEL_TEMP=C:\Users\othma\uptest-v2\output-matrices\_temp_AUT.xlsx
+[Uptest-Core] ERROR: Runner termine avec code 1.
+2026-03-26T16:09:02.120Z [EXIT] code=0
+2026-03-26T16:09:02.121Z [STDOUT] [Uptest-Core] START - ref csv: "C:\Users\othma\uptest-v2\ref_and_log_temp\referentiel_temp_1774541341886.csv"
+[Uptest-Core] INFO: excel temp: "C:\Users\othma\uptest-v2\output-matrices\_temp_AUT.xlsx"
+[Uptest-Core] INFO: Runner detecte: "C:\Users\othma\uptest-v2\Uptest-Core-Runner.bat"
+[Uptest-Core-Runner] START - ref csv: "C:\Users\othma\uptest-v2\ref_and_log_temp\referentiel_temp_1774541341886.csv"
+[Uptest-Core-Runner] INFO: Runner reel detecte: "C:\Users\othma\uptest-v2\Uptest-Core-RealRunner.bat"
+[Uptest-Core-RealRunner] ERROR: Commande robot non configuree.
+[Uptest-Core-RealRunner] INFO: REF_CSV=C:\Users\othma\uptest-v2\ref_and_log_temp\referentiel_temp_1774541341886.csv
+[Uptest-Core-RealRunner] INFO: EXCEL_TEMP=C:\Users\othma\uptest-v2\output-matrices\_temp_AUT.xlsx
+[Uptest-Core] ERROR: Runner termine avec code 1.
+2026-03-26T16:15:33.510Z [EXIT] code=0
+2026-03-26T16:15:33.512Z [STDOUT] [Uptest-Core] START - ref csv: "C:\Users\othma\uptest-v2\ref_and_log_temp\referentiel_temp_1774541733268.csv"
+[Uptest-Core] INFO: excel temp: "C:\Users\othma\uptest-v2\output-matrices\_temp_AUT.xlsx"
+[Uptest-Core] INFO: Runner detecte: "C:\Users\othma\uptest-v2\Uptest-Core-Runner.bat"
+[Uptest-Core-Runner] START - ref csv: "C:\Users\othma\uptest-v2\ref_and_log_temp\referentiel_temp_1774541733268.csv"
+[Uptest-Core-Runner] INFO: Runner reel detecte: "C:\Users\othma\uptest-v2\Uptest-Core-RealRunner.bat"
+[Uptest-Core-RealRunner] ERROR: Commande robot non configuree.
+[Uptest-Core-RealRunner] INFO: REF_CSV=C:\Users\othma\uptest-v2\ref_and_log_temp\referentiel_temp_1774541733268.csv
+[Uptest-Core-RealRunner] INFO: EXCEL_TEMP=C:\Users\othma\uptest-v2\output-matrices\_temp_AUT.xlsx
+[Uptest-Core] ERROR: Runner termine avec code 1.
+2026-03-26T16:23:01.949Z [EXIT] code=255
+2026-03-26T16:23:01.950Z [STDOUT] [Uptest-Core] START - ref csv: "C:\Users\othma\uptest-v2\ref_and_log_temp\referentiel_temp_1774542181774.csv"
+[Uptest-Core] INFO: excel temp: "C:\Users\othma\uptest-v2\output-matrices\_temp_AUT.xlsx"
+[Uptest-Core] INFO: Runner detecte: "C:\Users\othma\uptest-v2\Uptest-Core-Runner.bat"
+[Uptest-Core-Runner] START - ref csv: "C:\Users\othma\uptest-v2\ref_and_log_temp\referentiel_temp_1774542181774.csv"
+[Uptest-Core-Runner] INFO: Runner reel detecte: "C:\Users\othma\uptest-v2\Uptest-Core-RealRunner.bat"
+2026-03-26T16:23:01.951Z [STDERR] . was unexpected at this time.
+2026-03-26T16:24:12.191Z [EXIT] code=0
+2026-03-26T16:24:12.192Z [STDOUT] [Uptest-Core] START - ref csv: "C:\Users\othma\uptest-v2\ref_and_log_temp\referentiel_temp_1774542251967.csv"
+[Uptest-Core] INFO: excel temp: "C:\Users\othma\uptest-v2\output-matrices\_temp_AUT.xlsx"
+[Uptest-Core] INFO: Runner detecte: "C:\Users\othma\uptest-v2\Uptest-Core-Runner.bat"
+[Uptest-Core-Runner] START - ref csv: "C:\Users\othma\uptest-v2\ref_and_log_temp\referentiel_temp_1774542251967.csv"
+[Uptest-Core-Runner] INFO: Runner reel detecte: "C:\Users\othma\uptest-v2\Uptest-Core-RealRunner.bat"
+[Uptest-Core-RealRunner] INFO: REF_CSV=C:\Users\othma\uptest-v2\ref_and_log_temp\referentiel_temp_1774542251967.csv
+[Uptest-Core-RealRunner] INFO: EXCEL_TEMP=C:\Users\othma\uptest-v2\output-matrices\_temp_AUT.xlsx
+[Uptest-Core-RealRunner] INFO: PY_RUNNER=C:\Users\othma\uptest-v2\robot\runner.py
+[robot-runner][2026-03-26 17:24:12] START ref_csv=C:\Users\othma\uptest-v2\ref_and_log_temp\referentiel_temp_1774542251967.csv
+[robot-runner][2026-03-26 17:24:12] START excel=C:\Users\othma\uptest-v2\output-matrices\_temp_AUT.xlsx
+[robot-runner][2026-03-26 17:24:12] Target from CSV -> Module=AUT | Option=SaisieAutorisationClient
+[robot-runner][2026-03-26 17:24:12] PLACEHOLDER: execution technique OK (a remplacer par ton robot reel).
+[robot-runner][2026-03-26 17:24:12] END
+[Uptest-Core-RealRunner] OK
+[Uptest-Core] END
+2026-03-26T16:25:40.911Z [EXIT] code=0
+2026-03-26T16:25:40.911Z [STDOUT] [Uptest-Core] START - ref csv: "C:\Users\othma\uptest-v2\ref_and_log_temp\referentiel_temp_1774542340729.csv"
+[Uptest-Core] INFO: excel temp: "C:\Users\othma\uptest-v2\output-matrices\_temp_AUT.xlsx"
+[Uptest-Core] INFO: Runner detecte: "C:\Users\othma\uptest-v2\Uptest-Core-Runner.bat"
+[Uptest-Core-Runner] START - ref csv: "C:\Users\othma\uptest-v2\ref_and_log_temp\referentiel_temp_1774542340729.csv"
+[Uptest-Core-Runner] INFO: Runner reel detecte: "C:\Users\othma\uptest-v2\Uptest-Core-RealRunner.bat"
+[Uptest-Core-RealRunner] INFO: REF_CSV=C:\Users\othma\uptest-v2\ref_and_log_temp\referentiel_temp_1774542340729.csv
+[Uptest-Core-RealRunner] INFO: EXCEL_TEMP=C:\Users\othma\uptest-v2\output-matrices\_temp_AUT.xlsx
+[Uptest-Core-RealRunner] INFO: PY_RUNNER=C:\Users\othma\uptest-v2\robot\runner.py
+[robot-runner][2026-03-26 17:25:40] START ref_csv=C:\Users\othma\uptest-v2\ref_and_log_temp\referentiel_temp_1774542340729.csv
+[robot-runner][2026-03-26 17:25:40] START excel=C:\Users\othma\uptest-v2\output-matrices\_temp_AUT.xlsx
+[robot-runner][2026-03-26 17:25:40] Target from CSV -> Module=AUT | Option=SaisieAutorisationClient
+[robot-runner][2026-03-26 17:25:40] ERROR: Runner robot non configure (placeholder).
+[robot-runner][2026-03-26 17:25:40] ACTION: remplace le TODO par ta commande robot reelle.
+[robot-runner][2026-03-26 17:25:40] END
+[Uptest-Core-RealRunner] ERROR: runner Python termine avec code 2.
+[Uptest-Core] ERROR: Runner termine avec code 2.

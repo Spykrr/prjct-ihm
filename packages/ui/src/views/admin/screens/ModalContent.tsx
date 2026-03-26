@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Box, Flex, Button, Text, Dialog, Input } from '@chakra-ui/react';
-import { List, LayoutList, MousePointer, Link, MessageSquare, X, Trash2, Plus } from 'lucide-react';
+import { List, LayoutList, MousePointer, Link, MessageSquare, X, Trash2, Plus, GripVertical } from 'lucide-react';
+import { DndContext, closestCenter, useSensor, useSensors, PointerSensor, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import ChampsModal from '../../../components/modals/ChampsModal';
 import ChampFieldRow from '../../../components/modals/ChampFieldRow';
 import FormInput from '../../../components/modals/FormInput';
@@ -8,6 +11,7 @@ import GetInput from '../../../components/modals/GetInput';
 import {
   findValueByKeyPattern,
   getInitRowByEcran,
+  getInfoByKeyword,
   normalizeRowKeys,
   type ParsedScreen,
   type ParsedWorkbook,
@@ -45,6 +49,53 @@ function parseLibelleOption(val: string): { label: string; option: string } {
   return { label: label ?? '', option: option ?? '' };
 }
 
+function arrayMove<T>(arr: T[], fromIndex: number, toIndex: number): T[] {
+  const next = arr.slice();
+  const [moved] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, moved);
+  return next;
+}
+
+function SortableRow({
+  id,
+  children,
+}: {
+  id: string;
+  children: React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.75 : 1,
+  };
+
+  return (
+    <Box ref={setNodeRef} style={style}>
+      <Flex alignItems="center" gap={5}>
+        <Button
+          variant="ghost"
+          size="sm"
+          p={2}
+          minW="auto"
+          h="auto"
+          borderRadius="lg"
+          color="gray.500"
+          _hover={{ bg: 'gray.50', color: 'gray.700' }}
+          cursor="grab"
+          title="Glisser pour réordonner"
+          aria-label="Glisser pour réordonner"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical size={16} />
+        </Button>
+        {children}
+      </Flex>
+    </Box>
+  );
+}
+
 interface ModalContentProps {
   isOpen: boolean;
   onClose: () => void;
@@ -75,6 +126,18 @@ function getAvailableButtonsFromScreen(screen: ParsedScreen): { label: string; o
   const result: { label: string; option: string; value: string }[] = [];
   for (const key of BOUTON_STD_KEYS) {
     const val = String(screen.rawRow[key] ?? '').trim();
+    if (val && val !== '##') {
+      const { label, option } = parseLibelleOption(val);
+      if (label || option) result.push({ label, option, value: val });
+    }
+  }
+  return result;
+}
+
+function getAvailableButtonsFromRawRow(rawRow: Record<string, unknown>): { label: string; option: string; value: string }[] {
+  const result: { label: string; option: string; value: string }[] = [];
+  for (const key of BOUTON_STD_KEYS) {
+    const val = String(rawRow[key] ?? '').trim();
     if (val && val !== '##') {
       const { label, option } = parseLibelleOption(val);
       if (label || option) result.push({ label, option, value: val });
@@ -130,6 +193,13 @@ export default function ModalContent({
   const [prevScreenId, setPrevScreenId] = useState<string | null>(null);
   const [definitionChampVisibleCount, setDefinitionChampVisibleCount] = useState<number>(0);
   const [definitionBoutonVisibleCount, setDefinitionBoutonVisibleCount] = useState<number>(0);
+  const [noteDialog, setNoteDialog] = useState<{
+    open: boolean;
+    fieldKey: string;
+    label: string;
+    value: string;
+  }>({ open: false, fieldKey: '', label: '', value: '' });
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   if (screen && isOpen && screen.id !== prevScreenId) {
     setPrevScreenId(screen.id);
@@ -145,6 +215,81 @@ export default function ModalContent({
     onSave({ ...screen, rawRow: editedRow, fieldNotes: editedFieldNotes });
     onClose();
   };
+
+  const openFieldNoteDialog = (fieldKey: string, label: string) => {
+    const current = getFieldNoteResolved(fieldKey);
+    setNoteDialog({
+      open: true,
+      fieldKey,
+      label,
+      value: current,
+    });
+  };
+
+  const saveFieldNoteDialog = () => {
+    if (!noteDialog.fieldKey) {
+      setNoteDialog((prev) => ({ ...prev, open: false }));
+      return;
+    }
+    const trimmed = (noteDialog.value ?? '').trim();
+    setEditedFieldNotes((prev) => {
+      const out = { ...prev };
+      if (!trimmed) delete out[noteDialog.fieldKey];
+      else out[noteDialog.fieldKey] = trimmed;
+      return out;
+    });
+    setNoteDialog((prev) => ({ ...prev, open: false }));
+  };
+
+  const fieldNoteDialogNode = (
+    <Dialog.Root
+      open={noteDialog.open}
+      onOpenChange={(e) => !e.open && setNoteDialog((prev) => ({ ...prev, open: false }))}
+    >
+      <Dialog.Backdrop bg="blackAlpha.600" backdropFilter="blur(4px)" />
+      <Dialog.Positioner>
+        <Dialog.Content maxW="560px" borderRadius="xl" boxShadow="xl" bg="white" borderWidth="1px" borderColor="gray.200">
+          <Dialog.Header borderBottomWidth="1px" borderColor="gray.100" py={4} px={6}>
+            <Dialog.Title fontSize="lg" fontWeight="semibold">
+              Commentaire du champ {noteDialog.label || ''}
+            </Dialog.Title>
+            <Dialog.CloseTrigger />
+          </Dialog.Header>
+          <Dialog.Body py={5} px={6}>
+            <textarea
+              value={noteDialog.value}
+              onChange={(e) =>
+                setNoteDialog((prev) => ({ ...prev, value: e.target.value }))
+              }
+              placeholder="Saisir une note..."
+              style={{
+                width: '100%',
+                minHeight: '120px',
+                border: '1px solid #e5e7eb',
+                borderRadius: '0.5rem',
+                padding: '0.75rem',
+                fontSize: '0.875rem',
+                outline: 'none',
+              }}
+            />
+            <Flex justifyContent="flex-end" gap={3} mt={5}>
+              <Button
+                variant="outline"
+                borderColor="#3B82F6"
+                color="#3B82F6"
+                onClick={() => setNoteDialog((prev) => ({ ...prev, open: false }))}
+              >
+                Annuler
+              </Button>
+              <Button bg="#3B82F6" color="white" _hover={{ bg: '#2563EB' }} onClick={saveFieldNoteDialog}>
+                Enregistrer
+              </Button>
+            </Flex>
+          </Dialog.Body>
+        </Dialog.Content>
+      </Dialog.Positioner>
+    </Dialog.Root>
+  );
 
   // Mode définition (Champs / Boutons): afficher lignes utiles et permettre d'en "ajouter" via +
   useEffect(() => {
@@ -231,11 +376,8 @@ export default function ModalContent({
     workbook && currentSheet
       ? (workbook.headerFieldNotesBySheet?.[currentSheet] ?? {})
       : {};
-  const defaultInitFieldNotesForSheet =
-    workbook && currentSheet
-      ? (workbook.defaultInitFieldNotesBySheet?.[currentSheet] ?? {})
-      : {};
-  const showFieldNotes = !(_isDefinition || extractMode === 'init');
+  // En mode Definitions, on veut afficher les notes (italique) + proposer l'édition via bouton.
+  const showFieldNotes = _isDefinition || extractMode !== 'init';
 
   const getFieldNoteResolved = (fieldKey: string): string => {
     const edited = (editedFieldNotes[fieldKey] ?? '').trim();
@@ -256,6 +398,17 @@ export default function ModalContent({
   if (type === 'champs') {
     const isTestMode = extractMode === 'test';
     const isDefinitionMode = _isDefinition || extractMode === 'init';
+    const showTooltipsInTests = isTestMode && !_isDefinition;
+    const extractKeywordFromString = (s: unknown): string => {
+      const str = s == null ? '' : String(s).trim();
+      if (!str) return '';
+      // Prefer "...##CODE" suffix; fallback to whole string
+      const parts = str.split('##');
+      const candidate = (parts.length > 1 ? parts[parts.length - 1] : str).trim();
+      if (/^[1-9]\d?[IRCS][PA][A-Z]$/i.test(candidate)) return candidate.toUpperCase();
+      if (/^[1-9]\d?[NF]$/i.test(candidate)) return candidate.toUpperCase();
+      return '';
+    };
     const rawInitRow =
       isTestMode &&
       workbook &&
@@ -277,16 +430,17 @@ export default function ModalContent({
       const visibleRows = rows.slice(0, Math.max(1, Math.min(definitionChampVisibleCount || 1, rows.length)));
       const visibleCount = Math.max(1, Math.min(definitionChampVisibleCount || 1, rows.length));
 
-      const deleteRowAndShiftUp = (rowIndex0: number) => {
-        setEditedRow((prev) => {
-          const next = { ...prev };
-          for (let i = rowIndex0; i < CHAMP_STD_KEYS.length - 1; i++) {
-            next[CHAMP_STD_KEYS[i]] = next[CHAMP_STD_KEYS[i + 1]] ?? '';
-          }
-          next[CHAMP_STD_KEYS[CHAMP_STD_KEYS.length - 1]] = '';
-          return next;
+      const deleteRowOnly = (rowIndex0: number) => {
+        const key = CHAMP_STD_KEYS[rowIndex0];
+        if (!key) return;
+        setEditedRow((prev) => ({ ...prev, [key]: '' }));
+
+        // Si on supprime la dernière ligne visible, on peut réduire le nombre de lignes affichées
+        // (sans décaler les autres champs).
+        setDefinitionChampVisibleCount((c) => {
+          const current = Math.max(1, Math.min(c || visibleCount, rows.length));
+          return rowIndex0 === current - 1 ? Math.max(1, current - 1) : current;
         });
-        setDefinitionChampVisibleCount((c) => Math.max(1, (c || visibleCount) - 1));
       };
 
       return (
@@ -328,18 +482,7 @@ export default function ModalContent({
                           _placeholder={{ color: 'gray.400' }}
                         />
                       </Flex>
-                      {getFieldNote(r.key) && (
-                        <Text
-                          fontSize="sm"
-                          color="blue.600"
-                          fontStyle="italic"
-                          maxW="320px"
-                          lineClamp={2}
-                          title={getFieldNote(r.key)}
-                        >
-                          {getFieldNote(r.key)}
-                        </Text>
-                      )}
+                      {/* En mode Definitions: les notes ne s'affichent pas en inline (uniquement via bouton). */}
                     </Flex>
 
                     <Flex flex="1" alignItems="center" gap={3} minW={0}>
@@ -367,6 +510,23 @@ export default function ModalContent({
                       />
                     </Flex>
 
+                    {/* Bouton commentaire uniquement en mode Definitions */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      p={2}
+                      minW="auto"
+                      h="auto"
+                      borderRadius="lg"
+                      color={getFieldNoteResolved(r.key) ? 'blue.600' : 'gray.500'}
+                      _hover={{ bg: 'blue.50', color: 'blue.700' }}
+                      onClick={() => openFieldNoteDialog(r.key, String(r.idx))}
+                      title="Ajouter / modifier la note du champ"
+                      aria-label="Ajouter / modifier la note du champ"
+                    >
+                      <MessageSquare size={16} />
+                    </Button>
+
                     <Button
                       variant="ghost"
                       size="sm"
@@ -376,7 +536,7 @@ export default function ModalContent({
                       borderRadius="lg"
                       color="red.500"
                       _hover={{ bg: 'red.50', color: 'red.600' }}
-                      onClick={() => deleteRowAndShiftUp(r.idx - 1)}
+                      onClick={() => deleteRowOnly(r.idx - 1)}
                       title="Supprimer ce champ"
                     >
                       <Trash2 size={16} />
@@ -406,6 +566,7 @@ export default function ModalContent({
             </Flex>
 
             {footerButtons}
+            {fieldNoteDialogNode}
           </Box>
         </ChampsModal>
       );
@@ -419,11 +580,13 @@ export default function ModalContent({
         ? champKeys.map((key) => {
             if (isTestMode && initRow) {
               const initVal = String(initRow[key] ?? '');
-              const { label: initLabel } = parseLibelleOption(initVal);
+              const { label: initLabel, option: initOption } = parseLibelleOption(initVal);
               const testVal = String(editedRow[key] ?? '');
               return {
                 key,
                 label: initLabel,
+                option: initOption,
+                initVal,
                 value: testVal,
                 isTestMode: true,
               };
@@ -456,7 +619,21 @@ export default function ModalContent({
             <ChampFieldRow
               key={item.key}
               label={item.label}
-              note={getFieldNote(item.key)}
+              note={_isDefinition ? undefined : getFieldNote(item.key)}
+              helpText={(() => {
+                const anyItem = item as { option?: unknown; initVal?: unknown; value?: unknown; label?: string };
+                const keyword =
+                  extractKeywordFromString(anyItem.option) ||
+                  extractKeywordFromString(anyItem.initVal) ||
+                  extractKeywordFromString(anyItem.value);
+                return keyword ? getInfoByKeyword(keyword, item.label) : '';
+              })()}
+              showHelpIcon={showTooltipsInTests}
+              onEditNote={
+                _isDefinition
+                  ? () => openFieldNoteDialog(item.key, item.label || item.key)
+                  : undefined
+              }
               value={item.isTestMode ? item.value : (item.option as string)}
               displayValue={
                 item.isTestMode
@@ -557,6 +734,7 @@ export default function ModalContent({
           </Dialog.Root>
 
           {footerButtons}
+          {fieldNoteDialogNode}
         </Box>
       </ChampsModal>
     );
@@ -564,6 +742,7 @@ export default function ModalContent({
 
   if (type === 'boutons') {
     const isDefinitionMode = _isDefinition || extractMode === 'init';
+    const showTooltipsInTests = extractMode === 'test' && !_isDefinition;
 
     // Mode définition : même interface que Champs (Bouton N / Option N, +, corbeille)
     if (isDefinitionMode) {
@@ -649,20 +828,23 @@ export default function ModalContent({
                       _placeholder={{ color: 'gray.400' }}
                     />
                   </Flex>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    p={2}
-                    minW="auto"
-                    h="auto"
-                    borderRadius="lg"
-                    color="red.500"
-                    _hover={{ bg: 'red.50', color: 'red.600' }}
-                    onClick={() => deleteRowAndShiftUp(r.idx - 1)}
-                    title="Supprimer ce bouton"
-                  >
-                    <Trash2 size={16} />
-                  </Button>
+                  <Flex alignItems="center" gap={2}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      p={2}
+                      minW="auto"
+                      h="auto"
+                      borderRadius="lg"
+                      color="red.500"
+                      _hover={{ bg: 'red.50', color: 'red.600' }}
+                      onClick={() => deleteRowAndShiftUp(r.idx - 1)}
+                      title="Supprimer ce bouton"
+                      aria-label="Supprimer ce bouton"
+                    >
+                      <Trash2 size={16} />
+                    </Button>
+                  </Flex>
                 </Flex>
               ))}
             </Box>
@@ -704,21 +886,74 @@ export default function ModalContent({
 
     const availableButtons = getAvailableButtonsFromScreen(screen);
 
+    // En mode test, la ligne TEST peut ne pas contenir toutes les définitions de boutons.
+    // Pour lister "Boutons disponibles dans l'écran", on se base sur la ligne INIT du même écran.
+    const isTestMode = extractMode === 'test';
+    const rawInitRow =
+      isTestMode &&
+      workbook &&
+      currentSheet
+        ? getInitRowByEcran(
+            (workbook.sheets[currentSheet] ?? []) as Record<string, unknown>[],
+            screen.title,
+            findValueByKeyPattern
+          )
+        : undefined;
+    const initRow = rawInitRow ? normalizeRowKeys(rawInitRow) : undefined;
+
+    const availableButtonsResolved = initRow
+      ? getAvailableButtonsFromRawRow(initRow)
+      : availableButtons;
+
+    const displayedTestBoutonKeys = items.map((it) => it.key);
+    const handleTestBoutonDragEnd = (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over) return;
+      const activeId = String(active.id);
+      const overId = String(over.id);
+      if (activeId === overId) return;
+
+      const fromIndex = displayedTestBoutonKeys.indexOf(activeId);
+      const toIndex = displayedTestBoutonKeys.indexOf(overId);
+      if (fromIndex < 0 || toIndex < 0) return;
+
+      setEditedRow((prev) => {
+        const next = { ...prev };
+        const values = displayedTestBoutonKeys.map((k) => String(prev[k] ?? ''));
+        const moved = arrayMove(values, fromIndex, toIndex);
+        displayedTestBoutonKeys.forEach((k, i) => {
+          next[k] = moved[i];
+        });
+        return next;
+      });
+    };
+
     return (
       <ChampsModal isOpen={isOpen} onClose={onClose} title={titles.boutons} titleIcon={titleIcons.boutons}>
         <Box>
           <Box p={4} borderRadius="xl" bg="gray.50" borderWidth="1px" borderColor="gray.100" mb={4}>
-          {items.map((item) => (
-            <FormInput
-              key={item.key}
-              label={item.label}
-              option={item.option}
-              onLabelChange={(v) => updateKey(item.key, item.option ? `${v}##${item.option}` : v)}
-              onOptionChange={(v) => updateKey(item.key, item.label ? `${item.label}##${v}` : `##${v}`)}
-              onDelete={() => updateKey(item.key, '')}
-              showOption={false}
-            />
-          ))}
+          <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleTestBoutonDragEnd}>
+            <SortableContext items={displayedTestBoutonKeys} strategy={verticalListSortingStrategy}>
+              <Box display="flex" flexDirection="column" gap={3}>
+                {items.map((item) => (
+                  <SortableRow key={item.key} id={item.key}>
+                    <Box flex="1">
+                      <FormInput
+                        label={item.label}
+                        option={item.option}
+                        onLabelChange={(v) => updateKey(item.key, item.option ? `${v}##${item.option}` : v)}
+                        onOptionChange={(v) => updateKey(item.key, item.label ? `${item.label}##${v}` : `##${v}`)}
+                        onDelete={() => updateKey(item.key, '')}
+                        showOption={false}
+                        showHelpIcon={showTooltipsInTests}
+                        mb={0}
+                      />
+                    </Box>
+                  </SortableRow>
+                ))}
+              </Box>
+            </SortableContext>
+          </DndContext>
           <Button
             size="sm"
             variant="outline"
@@ -730,75 +965,72 @@ export default function ModalContent({
             _hover={{ bg: 'gray.50', borderColor: '#3B82F6' }}
             onClick={() => setShowBoutonChoices(true)}
           >
-            <List size={16} strokeWidth={2} /> Choisir un bouton de l&apos;écran
+            Choisir un bouton de l&apos;écran
           </Button>
           </Box>
 
-          <Dialog.Root open={showBoutonChoices} onOpenChange={(e) => !e.open && setShowBoutonChoices(false)}>
-            <Dialog.Backdrop bg="blackAlpha.600" backdropFilter="blur(4px)" />
-            <Dialog.Positioner>
-              <Dialog.Content
-                maxW="420px"
-                borderRadius="2xl"
-                boxShadow="2xl"
-                bg="white"
-                borderWidth="1px"
-                borderColor="gray.100"
-              >
-                <Dialog.Header
-                  py={4}
-                  px={5}
-                  borderBottomWidth="1px"
-                  borderColor="gray.100"
-                  bg="white"
-                  display="flex"
-                  alignItems="center"
-                  justifyContent="space-between"
+          {showBoutonChoices && (
+            <Box
+              mt={4}
+              p={5}
+              borderRadius="2xl"
+              boxShadow="2xl"
+              bg="white"
+              borderWidth="1px"
+              borderColor="gray.100"
+            >
+              <Flex alignItems="center" justifyContent="space-between" mb={4}>
+                <Text fontSize="md" fontWeight="semibold" color="gray.900">
+                  Boutons disponibles dans l&apos;écran
+                </Text>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  p={2}
+                  borderRadius="lg"
+                  color="gray.500"
+                  _hover={{ bg: 'gray.100' }}
+                  onClick={() => setShowBoutonChoices(false)}
+                  aria-label="Fermer"
                 >
-                  <Dialog.Title fontSize="md" fontWeight="semibold" color="gray.900">
-                    Boutons disponibles dans l&apos;écran
-                  </Dialog.Title>
-                  <Dialog.CloseTrigger asChild>
-                    <Box as="button" p={2} borderRadius="lg" color="gray.500" _hover={{ bg: 'gray.100' }} aria-label="Fermer">
-                      <X size={18} strokeWidth={2} />
-                    </Box>
-                  </Dialog.CloseTrigger>
-                </Dialog.Header>
-                <Dialog.Body maxH="320px" overflowY="auto" py={4} px={5}>
-                  {availableButtons.length === 0 ? (
-                    <Text color="gray.500" fontSize="sm">
-                      Aucun bouton défini pour cet écran
-                    </Text>
-                  ) : (
-                    <Box display="flex" flexDirection="column" gap={2}>
-                      {availableButtons.map((btn) => (
-                        <Button
-                          key={btn.value}
-                          size="sm"
-                          variant="outline"
-                          justifyContent="flex-start"
-                          fontWeight="normal"
-                          py={2.5}
-                          borderRadius="lg"
-                          borderColor="gray.200"
-                          _hover={{ bg: 'blue.50', borderColor: '#3B82F6' }}
-                          onClick={() => {
-                            const emptyKey = BOUTON_STD_KEYS.find((k) => !editedRow[k] || !String(editedRow[k]).trim());
-                            if (emptyKey) {
-                              updateKey(emptyKey, btn.value);
-                              setShowBoutonChoices(false);
-                            }
-                          }}
-                        >
-                          {btn.label} ({btn.option})
-                        </Button>
-                      ))}
-                    </Box>
-                  )}
-                </Dialog.Body>
-              </Dialog.Content>
-            </Dialog.Positioner>
-          </Dialog.Root>
+                  <X size={18} strokeWidth={2} />
+                </Button>
+              </Flex>
+
+              <Box maxH="320px" overflowY="auto">
+                {availableButtonsResolved.length === 0 ? (
+                  <Text color="gray.500" fontSize="sm">
+                    Aucun bouton défini pour cet écran
+                  </Text>
+                ) : (
+                  <Box display="flex" flexDirection="column" gap={2}>
+                    {availableButtonsResolved.map((btn) => (
+                      <Button
+                        key={btn.value}
+                        size="sm"
+                        variant="outline"
+                        justifyContent="flex-start"
+                        fontWeight="normal"
+                        py={2.5}
+                        borderRadius="lg"
+                        borderColor="gray.200"
+                        _hover={{ bg: 'blue.50', borderColor: '#3B82F6' }}
+                        onClick={() => {
+                          const emptyKey = BOUTON_STD_KEYS.find((k) => !editedRow[k] || !String(editedRow[k]).trim());
+                          if (emptyKey) {
+                            updateKey(emptyKey, btn.value);
+                            setShowBoutonChoices(false);
+                          }
+                        }}
+                      >
+                        {btn.label} ({btn.option})
+                      </Button>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+            </Box>
+          )}
 
           {footerButtons}
         </Box>

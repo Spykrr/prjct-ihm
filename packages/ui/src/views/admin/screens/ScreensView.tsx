@@ -9,6 +9,7 @@ import {
   Switch,
   Dialog,
   Menu,
+  Spinner,
 } from '@chakra-ui/react';
 import {
   Plus,
@@ -29,6 +30,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { parseExcel, generateWorksheetFromData, type ParsedScreen, type ParsedWorkbook, type SheetRow } from '@uptest/core';
+import { COLUMN_KEYS } from '@uptest/core';
 import * as XLSX from 'xlsx';
 import { openExcelFile } from '../../../utils/fileImport';
 import { useSidebar } from '../../../contexts/useSidebar';
@@ -75,8 +77,8 @@ function minimalInitScreen(): Screen {
 }
 
 export default function ScreensView() {
-  const { isDefinition, setIsDefinition } = useSidebar();
-  const { showSuccess } = useToast();
+  const { isDefinition, setIsDefinition, activeTab } = useSidebar();
+  const { showSuccess, showError } = useToast();
   const [importBuffer, setImportBuffer] = useState<{ buffer: ArrayBuffer; fileName: string } | null>(null);
   const [currentSheet, setCurrentSheet] = useState<string | null>(null);
   const [extractMode, setExtractMode] = useState<'init' | 'test'>('test');
@@ -110,6 +112,10 @@ export default function ScreensView() {
   const [renameTestValue, setRenameTestValue] = useState('');
   const [testToDelete, setTestToDelete] = useState<{ sheetName: string; testId: string } | null>(null);
   const [confirmReplaceImportOpen, setConfirmReplaceImportOpen] = useState(false);
+  const [executionState, setExecutionState] = useState<{ running: boolean; label: string }>({
+    running: false,
+    label: '',
+  });
 
   const effectiveExtractMode = isDefinition ? 'init' : extractMode;
   const resolvedTestIdForExtract = useMemo(() => {
@@ -289,17 +295,45 @@ export default function ScreensView() {
     ).filter((name) => !hiddenSheetNames.includes(name));
 
     sheetNamesToSave.forEach((sheetName) => {
-      let rows: SheetRow[] = [];
+      const screensForSheet: ParsedScreen[] =
+        sheetName === currentSheet
+          ? currentScreens
+          : addedSheets[sheetName]
+            ? addedSheets[sheetName]
+            : workbook?.screensBySheet?.[sheetName] ?? [];
 
-      if (sheetName === currentSheet) {
-        rows = currentScreens.map((s) => s.rawRow as SheetRow);
-      } else if (addedSheets[sheetName]) {
-        rows = addedSheets[sheetName].map((s) => s.rawRow as SheetRow);
-      } else {
-        rows = (workbook?.sheets[sheetName] ?? []) as SheetRow[];
-      }
+      const rows: SheetRow[] = screensForSheet.length
+        ? screensForSheet.map((s) => s.rawRow as SheetRow)
+        : ((workbook?.sheets[sheetName] ?? []) as SheetRow[]);
 
       const ws = generateWorksheetFromData(rows, sheetName);
+
+      // Réinjecte les notes (fieldNotes) dans les cellules Excel, pour que le fichier sauvegardé
+      // conserve les mêmes commentaires/notes qu'à l'import.
+      if (screensForSheet.length) {
+        screensForSheet.forEach((screen, screenIdx) => {
+          const notes = screen.fieldNotes ?? {};
+          const worksheetRowIndex = screenIdx + 1; // +1 car la ligne 0 = en-têtes
+
+          Object.entries(notes).forEach(([fieldKey, noteText]) => {
+            const colIndex = COLUMN_KEYS.indexOf(fieldKey);
+            if (colIndex < 0) return;
+            if (!noteText || !String(noteText).trim()) return;
+
+            const cellAddress = XLSX.utils.encode_cell({ r: worksheetRowIndex, c: colIndex });
+            const cell = ws[cellAddress] as XLSX.CellObject | undefined;
+
+            // Important : on ne remplace pas l'objet cellule (pour ne pas perdre `v/t`),
+            // on ajoute simplement la note sur place.
+            if (!cell) {
+              ws[cellAddress] = { t: 's', v: '', note: String(noteText) } as unknown as XLSX.CellObject;
+            } else {
+              (cell as unknown as { note?: unknown }).note = String(noteText);
+            }
+          });
+        });
+      }
+
       XLSX.utils.book_append_sheet(wb, ws, sheetName);
     });
 
@@ -366,32 +400,6 @@ export default function ScreensView() {
     showSuccess('Feuille supprimée avec succès');
   };
 
-  const duplicateSheet = (sheetName: string) => {
-    const sourceScreens = workbook?.screensBySheet[sheetName] ?? addedSheets[sheetName] ?? [];
-    const baseName = `${sheetName} (copie)`;
-    let newName = baseName;
-    let i = 1;
-    while (sheetNames.includes(newName)) {
-      newName = `${baseName} ${i}`;
-      i += 1;
-    }
-    const copied: Screen[] = sourceScreens.map((s, idx) => ({
-      ...s,
-      id: `copy-${Date.now()}-${idx}`,
-      number: idx + 1,
-      rawRow: { ...s.rawRow },
-    }));
-    setAddedSheets((prev) => ({ ...prev, [newName]: copied }));
-    setCurrentSheet(newName);
-    setScreens(copied);
-    showSuccess('Feuille dupliquée avec succès');
-  };
-
-  const openRenameSheetDialog = (sheetName: string) => {
-    setRenameSheetTarget(sheetName);
-    setRenameSheetValue(sheetDisplayNames[sheetName] ?? sheetName);
-  };
-
   const confirmRenameSheet = () => {
     if (!renameSheetTarget || !renameSheetValue.trim()) return;
     const newName = renameSheetValue.trim();
@@ -424,9 +432,105 @@ export default function ScreensView() {
     showSuccess('Nom modifié avec succès');
   };
 
-  const executeSheet = (_sheetName: string) => {
+  const executeTestNode = async (sheetName: string, testId: string) => {
     setImportError(null);
-    showSuccess('Exécution lancée avec succès');
+    if (!(activeTab === '1' || activeTab === '3')) {
+      showError("L'exécution est disponible uniquement dans Gérer les tests et Gérer les tests Soap.");
+      return;
+    }
+    try {
+      // Pré-condition: on a besoin de l'import (pour reconstruire un excel)
+      if (!workbook && !importBuffer) {
+        setImportError('Impossible d\'exécuter : aucun fichier Excel chargé.');
+        return;
+      }
+
+      const api = (window as unknown as {
+        electronAPI?: {
+          generateCsvAndRun: (d: unknown) => Promise<{
+            success?: boolean;
+            error?: string;
+            code?: number;
+            stderr?: string;
+            stdout?: string;
+          }>;
+        };
+      }).electronAPI;
+      const runElectron = api?.generateCsvAndRun;
+
+      const COLUMN_TYPE = '${type}';
+      const COLUMN_ID = '${id}';
+
+      const rowsFromExcel = (workbook?.sheets?.[sheetName] ?? []) as SheetRow[];
+
+      // Règle métier: exécuter = INIT + test choisi (${id} === testId)
+      const rowsToRun: SheetRow[] = rowsFromExcel.filter((r) => {
+        const typeVal = String((r as unknown as Record<string, unknown>)[COLUMN_TYPE] ?? '').toUpperCase().trim();
+        const idVal = String((r as unknown as Record<string, unknown>)[COLUMN_ID] ?? '').trim();
+        return typeVal === 'INIT' || idVal === testId;
+      });
+      if (rowsToRun.length === 0) {
+        const msg = `Aucune donnée trouvée pour le test "${testId}" dans la feuille "${sheetName}".`;
+        setImportError(msg);
+        showError(msg);
+        return;
+      }
+
+      const { generateExcel } = await import('@uptest/core');
+      const buffer = generateExcel(rowsToRun, sheetName);
+
+      // `generate-csv-and-run` attend un tableau d'entiers (comme dans Tree.tsx)
+      const excelBuffer = Array.from(new Uint8Array(buffer as ArrayBuffer));
+
+      const nomFichier = workbook?.fileName ?? importBuffer?.fileName ?? 'test.xlsx';
+      setExecutionState({ running: true, label: testId });
+
+      if (runElectron) {
+        const result = await runElectron({
+          nomFichier,
+          feuille: sheetName,
+          excelBuffer,
+        });
+
+        if (result?.success) {
+          console.log('Exécution lancée avec succès', result);
+          showSuccess('Exécution lancée avec succès');
+        } else {
+          console.error('Exécution échouée', result);
+          const codeInfo = typeof result?.code === 'number' ? ` (code=${result.code})` : '';
+          const errFromResult = typeof result?.error === 'string' ? result.error.trim() : '';
+          const stderrInfo = typeof result?.stderr === 'string' ? result.stderr.trim() : '';
+          const stdoutInfo = typeof result?.stdout === 'string' ? result.stdout.trim() : '';
+          const errPayload = errFromResult || stderrInfo || stdoutInfo;
+          const errInfo = errPayload ? `: ${errPayload}` : '';
+          const msg = `Erreur lors du lancement de l'exécution${codeInfo}${errInfo}`;
+          setImportError(msg);
+          showError(msg);
+        }
+      } else {
+        // Mode web : on exporte le fichier, car le lancement du .bat est uniquement possible via Electron IPC.
+        const blob = new Blob([buffer as ArrayBuffer], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = nomFichier;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        setImportError(
+          'Mode web détecté : lancement du .bat impossible (IPC Electron indisponible). Le fichier a été exporté, lance Uptest-Core.bat en mode Electron pour exécuter automatiquement.'
+        );
+        showError('Mode web détecté : IPC Electron indisponible.');
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Erreur lors du lancement de l\'exécution.';
+      setImportError(msg);
+      showError(msg);
+    } finally {
+      setExecutionState({ running: false, label: '' });
+    }
   };
 
   const openRenameTestDialog = (sheetName: string, testId: string) => {
@@ -532,12 +636,6 @@ export default function ScreensView() {
     setScreens(newScreens);
   };
 
-  const toggleSelectScreen = (id: string) => {
-    setSelectedScreens((prev) =>
-      prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id]
-    );
-  };
-
   const toggleSelectAll = () => {
     if (selectedScreens.length === filteredScreens.length) {
       setSelectedScreens([]);
@@ -567,6 +665,28 @@ export default function ScreensView() {
 
   return (
     <Box minH="100vh" display="flex" flexDirection="column" bg="#F8F8F8">
+      {executionState.running && (
+        <Box
+          position="fixed"
+          top="22px"
+          left="50%"
+          transform="translateX(-50%)"
+          zIndex={2500}
+          bg="blue.600"
+          color="white"
+          px={4}
+          py={2.5}
+          borderRadius="xl"
+          boxShadow="0 10px 24px rgba(37, 99, 235, 0.35)"
+        >
+          <Flex alignItems="center" gap={3}>
+            <Spinner size="sm" />
+            <Text fontSize="sm" fontWeight="medium" lineClamp={1}>
+              Exécution du test en cours... {executionState.label ? `(${executionState.label})` : ''}
+            </Text>
+          </Flex>
+        </Box>
+      )}
       {/* Header */}
       <Box as="header" bg="white" borderBottomWidth="1px" borderColor="gray.200">
         <Flex alignItems="center" justifyContent="space-between" px={6} py={3} flexWrap="wrap" gap={3}>
@@ -773,7 +893,9 @@ export default function ScreensView() {
                             boxShadow: currentSheet === sheetName && selectedNode === node
                               ? '0 10px 20px rgba(59, 130, 246, 0.22), 0 4px 10px rgba(59, 130, 246, 0.15)'
                               : '0 8px 16px rgba(15, 23, 42, 0.12)',
-                            transform: 'translateY(-1px)',
+                            // IMPORTANT: éviter `transform` ici car ça perturbe le calcul de position du menu
+                            // (Popper/portal utilise les bounding boxes et un stacking context).
+                            transform: 'none',
                           }}
                           transition="all 0.2s ease"
                           onClick={() => {
@@ -810,7 +932,8 @@ export default function ScreensView() {
                                   bg="white"
                                   py={2}
                                   px={1}
-                                  zIndex={50}
+                                  zIndex={2000}
+                                  overflow="visible"
                                 >
                                   <Menu.Item
                                     value="modifier"
@@ -830,12 +953,13 @@ export default function ScreensView() {
                                   </Menu.Item>
                                   <Menu.Item
                                     value="executer"
-                                    onSelect={() => showSuccess('Exécution lancée avec succès')}
+                                    onSelect={() => executeTestNode(sheetName, node)}
                                     py={2.5}
                                     px={3}
                                     borderRadius="lg"
                                     cursor="pointer"
                                     _highlighted={{ bg: 'gray.50' }}
+                                    display={activeTab === '1' || activeTab === '3' ? 'flex' : 'none'}
                                   >
                                     <Flex alignItems="center" gap={3}>
                                       <Play size={16} strokeWidth={2} />
@@ -1236,7 +1360,7 @@ export default function ScreensView() {
               {hasData && filteredScreens.length === 0 && !searchQuery && (
                 <Box
                   as="button"
-                  onClick={openAddScreenDialog}
+                  onClick={() => openAddScreenDialog()}
                   w="full"
                   p={10}
                   borderWidth="2px"

@@ -1,5 +1,6 @@
 import type { RefGroup, RefOption } from './fileUtils';
 import { findValueByKeyPattern } from './fileUtils';
+import * as XLSX from 'xlsx-js-style';
 
 export interface RefInstance {
   name: string;
@@ -175,36 +176,41 @@ export function parseRefCsvToFlat(csvText: string): RefInstance[] {
   const header = lines[headerRowIndex].split(CSV_SEP).map((c) => c.trim().replace(/^\uFEFF/, ''));
   const listitem: RefGroup[] = [];
   let currentGroup: RefGroup | null = null;
+  // Ordre basé sur la séquence d'apparition des lignes "groupe" dans le CSV.
+  // On utilise des pas de 100 pour rester compatible avec les valeurs manipulées en UI.
+  let groupSeq = 0;
+  const allocGroupOrderModule = () => {
+    groupSeq += 1;
+    return groupSeq * 100;
+  };
 
   for (let i = headerRowIndex + 1; i < lines.length; i++) {
     const cells = lines[i].split(CSV_SEP).map((c) => c.trim());
     const firstCell = cells[0] ?? '';
 
-    // Détection par première cellule : lignes de doc (un seul # ou ## seul) ou titres de groupe (## + texte)
+    // Détection par première cellule : lignes de doc ou titres de groupe.
+    // Ex: "# Portefeuille" => groupe ; "# Actif : ..." => doc (ignoré).
     if (firstCell.startsWith('#')) {
-      // Exactement "##" seul ou un seul "#" (avec ou sans texte) = doc, jamais de groupe
-      if (firstCell === '#' || firstCell === '##') {
-        continue;
-      }
-      // "# Actif : ...", "# Instance : ..." etc. = une seule # = ligne de doc, ignorer
-      if (firstCell.startsWith('# ') || (firstCell.startsWith('#') && !firstCell.startsWith('##'))) {
-        continue;
-      }
-      // "## Titre" (deux dièses + espace + texte) = groupe uniquement si pas une ligne de doc
-      if (firstCell.startsWith('##') && firstCell.length > 2) {
-        const groupTitle = firstCell.replace(/^##\s*/, '').trim();
-        const isDocLine = groupTitle.includes('=>') || /^(Actif|Instance|ordreDans|Module|Libelle|Option|Predecess|Param)\s*[:\.]/i.test(groupTitle);
-        if (!isDocLine) {
-          if (currentGroup) {
-            listitem.push(currentGroup);
-          }
-          currentGroup = {
-            name: groupTitle || firstCell,
-            orderModule: 0,
-            childreen: [],
-          };
+      // Exactement "#" / "##" seul = doc
+      if (firstCell === '#' || firstCell === '##') continue;
+
+      const groupTitle = firstCell.replace(/^#+\s*/, '').trim();
+      const isDocLine =
+        groupTitle.includes('=>') ||
+        /^(Actif|Instance|ordreDans|Module|Libelle|Option|Predecess|Param)\s*[:\.]/i.test(groupTitle);
+
+      // Ligne groupe uniquement si ce n'est pas une ligne doc et si le titre est plausible
+      if (!isDocLine && groupTitle && firstCell.length > 1) {
+        if (currentGroup && currentGroup.childreen.length > 0) {
+          listitem.push(currentGroup);
         }
+        currentGroup = {
+          name: groupTitle || firstCell,
+          orderModule: allocGroupOrderModule(),
+          childreen: [],
+        };
       }
+
       continue;
     }
 
@@ -218,17 +224,27 @@ export function parseRefCsvToFlat(csvText: string): RefInstance[] {
     const actifTrim = actifVal.trim();
     if (!actifTrim) continue;
 
-    // Si la colonne Actif contient "## Titre" (ligne de groupe), traiter comme groupe même si première colonne différente
-    if (actifTrim.startsWith('##') && actifTrim.length > 2) {
-      const groupTitle = actifTrim.replace(/^##\s*/, '').trim();
-      const isDocLine = groupTitle.includes('=>') || /^(Actif|Instance|ordreDans|Module|Libelle|Option|Predecess|Param)\s*[:\.]/i.test(groupTitle);
+    // Ligne de groupe (chapitre) : Actif commence par '#' (et ≠ '#') ; Module doit être vide.
+    // Support de variantes: "# Titre" ou "## Titre".
+    const moduleVal = getVal(row, 'Module');
+    const isGroupLineCandidate =
+      actifTrim.startsWith('#') &&
+      actifTrim.length > 1 &&
+      !moduleVal.trim();
+
+    if (isGroupLineCandidate) {
+      const groupTitle = actifTrim.replace(/^#+\s*/, '').trim();
+      const isDocLine =
+        groupTitle.includes('=>') ||
+        /^(Actif|Instance|ordreDans|Module|Libelle|Option|Predecess|Param)\s*[:\.]/i.test(groupTitle);
+
       if (!isDocLine) {
-        if (currentGroup) {
+        if (currentGroup && currentGroup.childreen.length > 0) {
           listitem.push(currentGroup);
         }
         currentGroup = {
           name: groupTitle || actifTrim,
-          orderModule: 0,
+          orderModule: allocGroupOrderModule(),
           childreen: [],
         };
       }
@@ -247,10 +263,15 @@ export function parseRefCsvToFlat(csvText: string): RefInstance[] {
     const module = getVal(row, 'Module');
     const predRaw = getPredecesseur(row);
 
+    // Règle validation simple : une ligne "option" doit avoir un Module renseigné
+    if (!module.trim()) continue;
+
     const opt: RefOption = {
       Actif: normalizeActif(actifTrim),
       Instance: inst,
-      OrdreModule: ordreInstance || (currentGroup.orderModule || 100),
+      // OrdreDansInstance (souvent l'"instance" numérique) : on le garde tel quel,
+      // même s'il vaut 0 (sinon on perd la valeur exacte du CSV).
+      OrdreModule: ordreInstance,
       Type: inferType(module),
       Module: module,
       ordreOption: ordreGroupe || 100,
@@ -263,17 +284,18 @@ export function parseRefCsvToFlat(csvText: string): RefInstance[] {
     }
 
     // Met à jour l'ordre du module du groupe à partir de la ligne
-    if (ordreInstance > 0) {
+    // On ne remplace pas l'ordre basé sur le CSV si déjà défini.
+    if ((!currentGroup.orderModule || currentGroup.orderModule === 0) && ordreInstance > 0) {
       currentGroup.orderModule = ordreInstance;
-    } else if (!currentGroup.orderModule) {
+    } else if ((!currentGroup.orderModule || currentGroup.orderModule === 0) && !ordreInstance) {
       currentGroup.orderModule = opt.OrdreModule ?? 100;
     }
 
     currentGroup.childreen.push(opt);
   }
 
-  // Ajoute le dernier groupe, même vide (comme décrit dans la doc)
-  if (currentGroup) {
+  // Ajoute le dernier groupe uniquement s'il contient des options
+  if (currentGroup && currentGroup.childreen.length > 0) {
     listitem.push(currentGroup);
   }
 
@@ -293,16 +315,32 @@ export function parseRefCsvToFlat(csvText: string): RefInstance[] {
     return [{ name: 'Inst01', childreen: [] }];
   }
 
-  return instanceNames.map((name) => ({
-    name,
-    childreen: listitem.map((g) => ({
-      name: g.name,
-      orderModule: g.orderModule,
-      childreen: g.childreen
-        .filter((o) => ((o.Instance as string) || 'Inst01') === name)
-        .sort((a, b) => (a.ordreOption ?? 0) - (b.ordreOption ?? 0)),
-    })),
-  }));
+  // Tri des instances par ordre de groupe (minimum) pour respecter l'ordre attendu
+  const instanceOrder = new Map<string, number>();
+  for (const name of instanceNames) {
+    const orders = listitem
+      .filter((g) => g.childreen.some((o) => String(o.Instance ?? 'Inst01').trim() === name))
+      .map((g) => Number(g.orderModule ?? 0));
+    instanceOrder.set(name, orders.length ? Math.min(...orders) : 0);
+  }
+  const sortedInstances = [...instanceNames].sort((a, b) => (instanceOrder.get(a) ?? 0) - (instanceOrder.get(b) ?? 0));
+
+  return sortedInstances.map((name) => {
+    const groupsForInst = listitem
+      .filter((g) => g.childreen.some((o) => String(o.Instance ?? 'Inst01').trim() === name))
+      .sort((a, b) => (a.orderModule ?? 0) - (b.orderModule ?? 0));
+
+    return {
+      name,
+      childreen: groupsForInst.map((g) => ({
+        name: g.name,
+        orderModule: g.orderModule,
+        childreen: g.childreen
+          .filter((o) => String(o.Instance ?? 'Inst01').trim() === name)
+          .sort((a, b) => (a.ordreOption ?? 0) - (b.ordreOption ?? 0)),
+      })),
+    };
+  });
 }
 
 /**
@@ -312,10 +350,16 @@ export function generateRefCsv(instances: RefInstance[]): string {
   const lines: string[] = [CSV_COLS.join(CSV_SEP)];
 
   for (const inst of instances) {
-    for (const grp of inst.childreen) {
-      const groupActifValue = grp.name.startsWith('#') ? grp.name : `## ${grp.name}`;
+    const groupsSorted = [...inst.childreen].sort((a, b) => (a.orderModule ?? 0) - (b.orderModule ?? 0));
+    for (const grp of groupsSorted) {
+      // Ne pas exporter les groupes vides
+      if (!grp.childreen || grp.childreen.length === 0) continue;
+
+      const groupName = grp.name.startsWith('#') ? grp.name.replace(/^#+\s*/, '') : grp.name;
+      const groupActifValue = `# ${groupName}`;
       const chapterCells = [groupActifValue, '', '', '', '', '', '', '', ...Array(10).fill('')];
       lines.push(chapterCells.slice(0, CSV_COLS.length).join(CSV_SEP));
+
       const opts = [...grp.childreen].sort((a, b) => (a.ordreOption ?? 0) - (b.ordreOption ?? 0));
       for (const o of opts) {
         const ordreMod = PAD_5(Number(o.OrdreModule ?? 0));
@@ -340,4 +384,139 @@ export function generateRefCsv(instances: RefInstance[]): string {
   }
 
   return lines.join('\r\n');
+}
+
+type ExportRowKind = 'header' | 'group' | 'option';
+
+function buildExportRows(instances: RefInstance[]): { rows: string[][]; kinds: ExportRowKind[] } {
+  const rows: string[][] = [];
+  const kinds: ExportRowKind[] = [];
+
+  rows.push([...CSV_COLS]);
+  kinds.push('header');
+
+  for (const inst of instances) {
+    const groupsSorted = [...(inst.childreen ?? [])].sort((a, b) => (a.orderModule ?? 0) - (b.orderModule ?? 0));
+    for (const grp of groupsSorted) {
+      if (!grp.childreen || grp.childreen.length === 0) continue;
+
+      const groupName = grp.name.startsWith('#') ? grp.name.replace(/^#+\s*/, '') : grp.name;
+      const groupActifValue = `# ${groupName}`;
+      const chapterCells = [groupActifValue, '', '', '', '', '', '', '', ...Array(10).fill('')].slice(0, CSV_COLS.length);
+      rows.push(chapterCells);
+      kinds.push('group');
+
+      const opts = [...grp.childreen].sort((a, b) => (a.ordreOption ?? 0) - (b.ordreOption ?? 0));
+      for (const o of opts) {
+        const ordreMod = PAD_5(Number(o.OrdreModule ?? 0));
+        const ordreOpt = PAD_5(Number(o.ordreOption ?? 0));
+        const params = Array.from({ length: 10 }, (_, i) => (o[`Param${i + 1}`] as string) ?? '');
+        const predecesseur = normalizePredecesseurForExport((o.Predecesseur as string) ?? '');
+        rows.push(
+          [
+            o.Actif ?? 'O',
+            (o.Instance as string) ?? inst.name,
+            ordreMod,
+            (o.Module as string) ?? '',
+            ordreOpt,
+            (o.Option as string) ?? '',
+            (o.Libelle as string) ?? '',
+            predecesseur,
+            ...params,
+          ].slice(0, CSV_COLS.length)
+        );
+        kinds.push('option');
+      }
+    }
+  }
+
+  return { rows, kinds };
+}
+
+/**
+ * Génère un fichier Excel (.xlsx) équivalent au CSV référentiel,
+ * avec mise en forme (en-tête, séparateurs de groupe, bordures, alignements, largeurs).
+ */
+export function generateRefXlsx(instances: RefInstance[], sheetName = 'Referentiel'): ArrayBuffer {
+  const { rows, kinds } = buildExportRows(instances);
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+
+  // Largeurs de colonnes proches d'un rendu IHM
+  ws['!cols'] = CSV_COLS.map((col) => {
+    if (col === 'Actif') return { wch: 16 };
+    if (col === 'Instance') return { wch: 12 };
+    if (col === 'OrdreDansInstance' || col === 'OrdreDansGroupe') return { wch: 18 };
+    if (col === 'Module' || col === 'Option') return { wch: 18 };
+    if (col === 'Libelle') return { wch: 44 };
+    if (col === 'Predecesseur') return { wch: 46 };
+    if (col.startsWith('Param')) return { wch: 16 };
+    return { wch: 16 };
+  });
+
+  const border = {
+    top: { style: 'thin', color: { rgb: 'E5E7EB' } },
+    bottom: { style: 'thin', color: { rgb: 'E5E7EB' } },
+    left: { style: 'thin', color: { rgb: 'E5E7EB' } },
+    right: { style: 'thin', color: { rgb: 'E5E7EB' } },
+  } as const;
+
+  const headerStyle = {
+    font: { bold: true, color: { rgb: 'FFFFFF' } },
+    fill: { patternType: 'solid', fgColor: { rgb: '111111' } },
+    alignment: { vertical: 'center', horizontal: 'center', wrapText: true },
+    border,
+  } as const;
+
+  const groupStyle = {
+    font: { bold: true, color: { rgb: '111827' } },
+    fill: { patternType: 'solid', fgColor: { rgb: 'F7F7F7' } },
+    alignment: { vertical: 'center', horizontal: 'left' },
+    border,
+  } as const;
+
+  const cellStyle = {
+    font: { color: { rgb: '111827' } },
+    alignment: { vertical: 'center', horizontal: 'left', wrapText: true },
+    border,
+  } as const;
+
+  const orderStyle = {
+    font: { color: { rgb: '111827' } },
+    alignment: { vertical: 'center', horizontal: 'center' },
+    border,
+  } as const;
+
+  // Applique styles ligne par ligne (kinds aligné sur rows)
+  const range = XLSX.utils.decode_range(ws['!ref'] ?? `A1:A${rows.length}`);
+  for (let r = range.s.r; r <= range.e.r; r++) {
+    const kind = kinds[r] ?? 'option';
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      const cell = ws[addr];
+      if (!cell) continue;
+
+      if (kind === 'header') {
+        cell.s = headerStyle;
+        continue;
+      }
+      if (kind === 'group') {
+        cell.s = c === 0 ? groupStyle : { ...groupStyle, font: { ...groupStyle.font, bold: false } };
+        continue;
+      }
+
+      const colName = CSV_COLS[c] ?? '';
+      if (colName === 'OrdreDansInstance' || colName === 'OrdreDansGroupe') {
+        cell.s = orderStyle;
+      } else {
+        cell.s = cellStyle;
+      }
+    }
+  }
+
+  // Hauteur ligne header
+  (ws as XLSX.WorkSheet & { ['!rows']?: { hpt?: number }[] })['!rows'] = [{ hpt: 20 }];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  return XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
 }

@@ -12,6 +12,7 @@ import { Upload, Download, Plus, Trash2, FolderOpen, ChevronUp, ChevronDown, Che
 import {
   parseRefCsv,
   generateRefCsv,
+  generateRefXlsx,
   addGrp,
   type RefInstance,
   type RefGroup,
@@ -37,8 +38,36 @@ function downloadCsv(content: string, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
+function downloadXlsx(buffer: ArrayBuffer, fileName: string) {
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function pad5(n: number): string {
   return String(Math.max(0, Math.floor(n))).padStart(5, '0');
+}
+
+const MIN_ORDRE_OPTION = 0;
+const MAX_ORDRE_OPTION = 999;
+
+function parseStrictOrdreOption(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value)) return null;
+  if (value < MIN_ORDRE_OPTION || value > MAX_ORDRE_OPTION) return null;
+  return value;
+}
+
+function normalizeOrdreOptionForCalc(value: unknown, fallback = 0): number {
+  const strict = parseStrictOrdreOption(value);
+  if (strict != null) return strict;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  const floored = Math.floor(n);
+  return Math.max(MIN_ORDRE_OPTION, Math.min(MAX_ORDRE_OPTION, floored));
 }
 
 function normalizePredecesseurKey(value: string): string {
@@ -90,6 +119,7 @@ export default function OrdonnancementView() {
   const { showSuccess } = useToast();
   const [instances, setInstances] = useState<RefInstance[]>([]);
   const [currentInstance, setCurrentInstance] = useState<string>('');
+  const [importedCsvName, setImportedCsvName] = useState<string>('');
   const [importError, setImportError] = useState<string | null>(null);
   const [showActiveOnly, setShowActiveOnly] = useState(false);
   const [openGroups, setOpenGroups] = useState<string[]>([]);
@@ -104,6 +134,7 @@ export default function OrdonnancementView() {
 
       const parsed = parseRefCsv(result.text);
       setInstances(parsed);
+      setImportedCsvName(result.fileName || '');
       if (parsed.length > 0) {
         setCurrentInstance(parsed[0].name);
       }
@@ -122,8 +153,16 @@ export default function OrdonnancementView() {
 
   const handleExport = () => {
     if (instances.length === 0) return;
+    const base =
+      (importedCsvName || 'referentielSabRobot')
+        .replace(/\.[^.]+$/, '')
+        .trim() || 'referentielSabRobot';
+
     const csv = generateRefCsv(instances);
-    downloadCsv(csv, 'referentielSabRobot.csv');
+    downloadCsv(csv, `${base}.csv`);
+
+    const xlsx = generateRefXlsx(instances, 'Referentiel');
+    downloadXlsx(xlsx, `${base}.xlsx`);
   };
 
   const currentInstanceData = instances.find((i) => i.name === currentInstance);
@@ -136,36 +175,6 @@ export default function OrdonnancementView() {
         i.name === instName ? { ...i, childreen: newGroups } : i
       )
     );
-  };
-
-  const renameInstance = (oldName: string) => {
-    const newName = window.prompt('Nouveau nom de l\'instance :', oldName);
-    if (!newName?.trim() || newName.trim() === oldName) return;
-    const trimmed = newName.trim();
-    if (instances.some((i) => i.name === trimmed)) {
-      window.alert('Une instance avec ce nom existe déjà.');
-      return;
-    }
-    setInstances((prev) =>
-      prev.map((i) => (i.name === oldName ? { ...i, name: trimmed } : i))
-    );
-    if (currentInstance === oldName) setCurrentInstance(trimmed);
-    showSuccess('Nom modifié avec succès');
-  };
-
-  const deleteInstance = (instName: string) => {
-    if (!window.confirm(`Supprimer l'instance "${instName}" et tous ses groupes ?`)) return;
-    setInstances((prev) => prev.filter((i) => i.name !== instName));
-    if (currentInstance === instName) {
-      const remaining = instances.filter((i) => i.name !== instName);
-      setCurrentInstance(remaining.length > 0 ? remaining[0].name : '');
-    }
-    showSuccess('Instance supprimée avec succès');
-  };
-
-  const executeInstance = (instName: string) => {
-    setCurrentInstance(instName);
-    showSuccess('Exécution lancée avec succès');
   };
 
   const addGroup = () => {
@@ -199,8 +208,13 @@ export default function OrdonnancementView() {
     const targetIndex = direction === 'up' ? indexGrp - 1 : indexGrp + 1;
     [newGroups[indexGrp], newGroups[targetIndex]] = [newGroups[targetIndex], newGroups[indexGrp]];
     const step = 100;
+    // Recalcule uniquement lors d'un déplacement:
+    // 1er groupe = 00100, 2e = 00200, etc.
+    // On synchronise aussi OrdreModule de chaque option pour garder l'affichage cohérent.
     newGroups.forEach((g, i) => {
-      g.orderModule = (i + 1) * step;
+      const newOrder = step + i * step;
+      g.orderModule = newOrder;
+      g.childreen = (g.childreen ?? []).map((opt) => ({ ...opt, OrdreModule: newOrder }));
     });
     updateInstance(currentInstance, newGroups);
   };
@@ -217,37 +231,96 @@ export default function OrdonnancementView() {
       const oldOption = targetGroup?.childreen?.[indexOpt];
       if (!targetGroup || !oldOption) return prev;
 
-      const updatedInstances = prev.map((inst) => {
-        if (inst.name !== currentInstance) return inst;
-
-        const groupsForInst = inst.childreen ?? [];
-
-        const newGroupsForInst = groupsForInst.map((g, i) => {
-          if (i !== indexGrp) return g;
-          const newChildreen = [...g.childreen];
-          newChildreen[indexOpt] = opt;
-          newChildreen.sort((a, b) => (a.ordreOption ?? 0) - (b.ordreOption ?? 0));
-          return { ...g, childreen: newChildreen };
-        });
-
-        return { ...inst, childreen: newGroupsForInst };
-      });
-
-      const oldOrdreOption = Number(oldOption.ordreOption ?? NaN);
-      const newOrdreOption = Number(opt.ordreOption ?? NaN);
-      if (!Number.isFinite(oldOrdreOption) || !Number.isFinite(newOrdreOption) || oldOrdreOption === newOrdreOption) {
-        return updatedInstances;
+      const strictRequested = parseStrictOrdreOption(opt.ordreOption);
+      if (strictRequested == null) {
+        // Validation stricte 0-999 : si invalide, ne pas appliquer la modification.
+        return prev;
       }
 
-      const sourceInstance = String(oldOption.Instance ?? currentInstance).trim() || currentInstance;
-      const sourceOrdreModule = Number(oldOption.OrdreModule ?? targetGroup.orderModule ?? 0);
-      const sourceModule = String(oldOption.Module ?? opt.Module ?? '').trim();
-      const oldKey = normalizePredecesseurKey(
-        `${sourceInstance}##${pad5(sourceOrdreModule)}##${pad5(oldOrdreOption)}##${sourceModule}`
-      );
-      const newKey = normalizePredecesseurKey(
-        `${sourceInstance}##${pad5(sourceOrdreModule)}##${pad5(newOrdreOption)}##${sourceModule}`
-      );
+      const groupOrderModule = Number(targetGroup.orderModule ?? oldOption.OrdreModule ?? 0);
+      const oldGroupOptions = targetGroup.childreen ?? [];
+      const oldGroupByIndex = new Map<number, RefOption>();
+      oldGroupOptions.forEach((o, idx) => oldGroupByIndex.set(idx, o));
+
+      const reassignedByIndex = new Map<number, RefOption>();
+      const targetPatched: RefOption = {
+        ...opt,
+        ordreOption: strictRequested,
+        OrdreModule: groupOrderModule,
+      };
+      reassignedByIndex.set(indexOpt, targetPatched);
+
+      // Gestion atomique des doublons :
+      // on réserve la valeur cible puis on recale les autres options vers la prochaine valeur libre.
+      const used = new Set<number>([strictRequested]);
+      const others = oldGroupOptions
+        .map((o, idx) => ({ o, idx }))
+        .filter(({ idx }) => idx !== indexOpt)
+        .sort((a, b) => {
+          const oa = normalizeOrdreOptionForCalc(a.o.ordreOption, 0);
+          const ob = normalizeOrdreOptionForCalc(b.o.ordreOption, 0);
+          if (oa !== ob) return oa - ob;
+          return a.idx - b.idx;
+        });
+
+      for (const { o, idx } of others) {
+        let candidate = normalizeOrdreOptionForCalc(o.ordreOption, 0);
+        while (used.has(candidate) && candidate <= MAX_ORDRE_OPTION) {
+          candidate += 1;
+        }
+        if (candidate > MAX_ORDRE_OPTION) {
+          candidate = MIN_ORDRE_OPTION;
+          while (used.has(candidate) && candidate <= MAX_ORDRE_OPTION) {
+            candidate += 1;
+          }
+          if (candidate > MAX_ORDRE_OPTION) {
+            candidate = normalizeOrdreOptionForCalc(o.ordreOption, 0);
+          }
+        }
+        used.add(candidate);
+        reassignedByIndex.set(idx, {
+          ...o,
+          ordreOption: candidate,
+          OrdreModule: groupOrderModule,
+        });
+      }
+
+      const rebuiltGroupOptions = oldGroupOptions
+        .map((_, idx) => reassignedByIndex.get(idx) ?? oldGroupByIndex.get(idx)!)
+        .sort((a, b) => (normalizeOrdreOptionForCalc(a.ordreOption, 0) - normalizeOrdreOptionForCalc(b.ordreOption, 0)));
+
+      // Mapping complet oldKey -> newKey pour toutes les options du groupe dont ordreOption a changé
+      const predecessorRewrites = new Map<string, string>();
+      for (let i = 0; i < oldGroupOptions.length; i += 1) {
+        const oldOpt = oldGroupOptions[i];
+        const newOpt = reassignedByIndex.get(i) ?? oldOpt;
+        const oldOrdre = normalizeOrdreOptionForCalc(oldOpt.ordreOption, 0);
+        const newOrdre = normalizeOrdreOptionForCalc(newOpt.ordreOption, 0);
+        if (oldOrdre === newOrdre) continue;
+
+        const sourceInstance = String(oldOpt.Instance ?? currentInstance).trim() || currentInstance;
+        const sourceOrdreModule = Number(oldOpt.OrdreModule ?? targetGroup.orderModule ?? 0);
+        const sourceModule = String(oldOpt.Module ?? newOpt.Module ?? '').trim();
+        const oldKey = normalizePredecesseurKey(
+          `${sourceInstance}##${pad5(sourceOrdreModule)}##${pad5(oldOrdre)}##${sourceModule}`
+        );
+        const newKey = normalizePredecesseurKey(
+          `${sourceInstance}##${pad5(sourceOrdreModule)}##${pad5(newOrdre)}##${sourceModule}`
+        );
+        if (oldKey && newKey) predecessorRewrites.set(oldKey, newKey);
+      }
+
+      const updatedInstances = prev.map((inst) => {
+        if (inst.name !== currentInstance) return inst;
+        return {
+          ...inst,
+          childreen: (inst.childreen ?? []).map((g, i) =>
+            i === indexGrp ? { ...g, childreen: rebuiltGroupOptions } : g
+          ),
+        };
+      });
+
+      if (predecessorRewrites.size === 0) return updatedInstances;
 
       return updatedInstances.map((inst) => ({
         ...inst,
@@ -256,8 +329,10 @@ export default function OrdonnancementView() {
           childreen: (grp.childreen ?? []).map((candidate) => {
             const pred = getPredecesseurValue(candidate);
             if (!pred) return candidate;
-            if (normalizePredecesseurKey(pred) !== oldKey) return candidate;
-            return setPredecesseurValue(candidate, newKey);
+            const normalizedPred = normalizePredecesseurKey(pred);
+            const replacement = predecessorRewrites.get(normalizedPred);
+            if (!replacement) return candidate;
+            return setPredecesseurValue(candidate, replacement);
           }),
         })),
       }));
@@ -274,13 +349,10 @@ export default function OrdonnancementView() {
     updateInstance(currentInstance, newGroups);
   };
 
-  const currentInstanceIndex = instances.findIndex((i) => i.name === currentInstance);
-  const isSecondInstance = currentInstanceIndex === 1;
-  const filteredGroups = isSecondInstance
-    ? groups.filter((g) => g.childreen.some((o) => !isOptionActif(o)))
-    : showActiveOnly
-      ? groups.filter((g) => g.childreen.some((o) => isOptionActif(o)))
-      : groups;
+  // Filtrage: soit on affiche uniquement les tests actifs, soit on affiche tous les groupes.
+  // On ne fait pas de filtrage spécial sur l'index de l'instance (sinon certaines
+  // instances peuvent manquer des groupes selon l'ordre des instances).
+  const filteredGroups = showActiveOnly ? groups.filter((g) => g.childreen.some((o) => isOptionActif(o))) : groups;
 
   return (
     <Box minH="100vh" display="flex" flexDirection="column" bg="gray.50">
@@ -296,6 +368,58 @@ export default function OrdonnancementView() {
             Ordonnancer les tests
           </Text>
           <Flex alignItems="center" gap={4}>
+            {importedCsvName && (
+              <Flex
+                alignItems="center"
+                gap={3}
+                px={4}
+                py={2.5}
+                borderRadius="2xl"
+                maxW="520px"
+                borderWidth="1px"
+                borderColor="rgba(59, 130, 246, 0.22)"
+                bg="linear-gradient(135deg, rgba(59,130,246,0.10) 0%, rgba(255,255,255,0.95) 45%, rgba(59,130,246,0.06) 100%)"
+                boxShadow="0 10px 24px rgba(15, 23, 42, 0.10), 0 2px 8px rgba(15, 23, 42, 0.06)"
+                position="relative"
+                overflow="hidden"
+              >
+                <Box
+                  position="absolute"
+                  inset={0}
+                  bg="linear-gradient(180deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0) 55%)"
+                  pointerEvents="none"
+                />
+                <Box
+                  position="relative"
+                  flexShrink={0}
+                  w="34px"
+                  h="34px"
+                  borderRadius="xl"
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  bg="rgba(59,130,246,0.14)"
+                  color="#2563EB"
+                >
+                  <FolderOpen size={18} strokeWidth={2} />
+                </Box>
+                <Box position="relative" minW={0}>
+                  <Text fontSize="xs" color="gray.600" lineClamp={1}>
+                    Fichier importé
+                  </Text>
+                  <Text
+                    fontSize="sm"
+                    fontWeight="bold"
+                    color="gray.900"
+                    lineClamp={1}
+                    title={importedCsvName}
+                    letterSpacing="-0.01em"
+                  >
+                    {importedCsvName}
+                  </Text>
+                </Box>
+              </Flex>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -426,10 +550,9 @@ export default function OrdonnancementView() {
               </Text>
             ) : (
               <Box display="flex" flexDirection="column" gap={2}>
-                {instances.map((inst, instIndex) => {
-                  const groupCount = instIndex === 1
-                    ? inst.childreen.filter((g) => g.childreen.some((o) => !isOptionActif(o))).length
-                    : inst.childreen.length;
+                {instances.map((inst) => {
+                  // Compteur dynamique: nombre réel de groupes présents dans l'instance.
+                  const groupCount = (inst.childreen ?? []).filter((g) => !!g).length;
                   const isSelected = currentInstance === inst.name;
                   return (
                     <Box
@@ -563,7 +686,13 @@ export default function OrdonnancementView() {
                   {filteredGroups.map((grp, indexGrp) => {
                     const grpIndex = groups.indexOf(grp);
                     const groupLabel = grp.name.replace(/^#+\s*/, '');
-                    const orderModuleFormatted = String(grp.orderModule ?? 0).padStart(5, '0');
+                    // Affichage: valeur numérique de l'instance telle qu'elle existe dans le CSV.
+                    // On la déduit des options du groupe (colonne OrdreDansInstance / OrdreModule).
+                    const instanceOrderRaw = (grp.childreen ?? [])
+                      .map((o) => Number(o.OrdreModule ?? 0))
+                      .filter((n) => Number.isFinite(n));
+                    const instanceOrderMin = instanceOrderRaw.length ? Math.min(...instanceOrderRaw) : 0;
+                    const instanceOrderFormatted = String(instanceOrderMin).padStart(5, '0');
                     const itemValue = `grp-${indexGrp}`;
                     const isOpen = openGroups.includes(itemValue);
                     return (
@@ -600,7 +729,7 @@ export default function OrdonnancementView() {
                                     )}
                                   </Box>
                                   <Text fontWeight="bold" color="gray.900" lineClamp={1}>
-                                    {groupLabel} – {orderModuleFormatted}
+                                    {groupLabel} – {instanceOrderFormatted}
                                   </Text>
                                 </Flex>
                                 <Flex alignItems="center" gap={1} flexShrink={0} ml="auto" onClick={(e) => e.stopPropagation()}>
@@ -651,14 +780,10 @@ export default function OrdonnancementView() {
                                 .sort((a, b) => (a.ordreOption ?? 0) - (b.ordreOption ?? 0))
                                 .map((opt, indexOpt) => {
                                   const indexOptInGroup = grp.childreen.findIndex((o) => o === opt);
-                                  const siblingOrdreOptions = grp.childreen
-                                    .filter((o) => o !== opt)
-                                    .map((o) => o.ordreOption ?? 0);
                                   return (
                                     <FormInputRef
                                       key={indexOpt}
                                       option={opt}
-                                      siblingOrdreOptions={siblingOrdreOptions}
                                       onUpdate={(o) => updateOption(grpIndex, indexOptInGroup, o)}
                                       onDelete={() => deleteOption(grpIndex, indexOptInGroup)}
                                     />
